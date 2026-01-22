@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de productos</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* Estilos Originales */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background-color: #f0f2f5; }
+        h1 { text-align: center; color: #333; }
+        
+        /* Panel Admin */
+        details { background: #e9ecef; border-radius: 10px; margin-bottom: 20px; border: 1px solid #adb5bd; overflow: hidden; }
+        summary { padding: 15px; cursor: pointer; font-weight: bold; background: #dee2e6; list-style: none; }
+        summary:hover { background: #ced4da; }
+        .admin-content { padding: 20px; text-align: center; border-top: 1px solid #ccc; }
+
+        /* Formulario */
+        .form-group { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center;}
+        #statusDb { font-size: 14px; color: #666; width: 100%; margin-bottom: 10px; }
+        
+        input { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; flex: 1; min-width: 200px; }
+        
+        button { padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
+        button:hover { opacity: 0.9; }
+        .btn-guardar { background-color: #28a745; }
+        .btn-borrar { background-color: #dc3545; padding: 6px 12px; font-size: 12px; }
+        .btn-admin { background-color: #6c757d; margin-top: 10px;}
+
+        /* Tabla Adaptable */
+        .table-container { overflow-x: auto; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #007bff; color: white; position: sticky; top: 0; }
+        
+        .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
+        .nombre-tag { color: #333; font-weight: 500; }
+
+        /* Ajustes para Móvil */
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .form-group { padding: 15px; }
+            input { width: 100%; }
+            .btn-guardar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📦 Buscar código</h1>
+
+    <details>
+        <summary>⚙️ Panel de Actualización de Ubicaciones</summary>
+        <div class="admin-content">
+            <h3>Cargar Base de Datos de Ubicaciones</h3>
+            <p style="font-size: 13px; margin-bottom: 10px;">
+                ⚠️ <b>Nota:</b> Al subir un nuevo archivo, se borrarán todas las ubicaciones anteriores automáticamente.
+            </p>
+            <input type="file" id="excelInput" accept=".xlsx, .xls">
+            <button class="btn-admin" onclick="procesarYSubirExcel()">☁️ Subir y Reemplazar Todo</button>
+            <div id="progresoCarga" style="margin-top: 10px; font-weight: bold; color: #007bff;"></div>
+        </div>
+    </details>
+
+    <div class="form-group">
+        <span id="statusDb">⏳ Cargando base de datos...</span>
+        <input type="text" id="codigoInput" placeholder="Escanea o escribe el código..." autofocus>
+        <button class="btn-guardar" onclick="guardarDatos()">+ Agregar</button>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Código</th>
+                    <th>Ubicación</th>
+                    <th>Fecha / Hora</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody id="tablaCuerpo"></tbody>
+        </table>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp, deleteDoc, doc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB_13cedG5q03t9FUgTkaVwiTyD1pzD0F8",
+            authDomain: "verproductos-40224.firebaseapp.com",
+            projectId: "verproductos-40224",
+            storageBucket: "verproductos-40224.firebasestorage.app",
+            messagingSenderId: "903739745189",
+            appId: "1:903739745189:web:b608225acc87550c85be4c"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const colRegistros = collection(db, "registros");
+        const colUbicaciones = collection(db, "ubicaciones_diarias");
+
+        let mapaProductos = {};
+
+        // 1. CARGA INICIAL
+        async function cargarBase() {
+            const status = document.getElementById('statusDb');
+            try {
+                const querySnapshot = await getDocs(colUbicaciones);
+                mapaProductos = {};
+                querySnapshot.forEach((doc) => {
+                    mapaProductos[doc.id] = doc.data();
+                });
+                status.innerHTML = `✅ ${Object.keys(mapaProductos).length} productos cargados.`;
+                status.style.color = "green";
+            } catch (error) {
+                status.innerHTML = "❌ Error al conectar con la nube.";
+            }
+        }
+        cargarBase();
+
+        // 2. SUBIR EXCEL
+        window.procesarYSubirExcel = async () => {
+            const fileInput = document.getElementById('excelInput');
+            const progreso = document.getElementById('progresoCarga');
+
+            if(fileInput.files.length === 0) return alert("Selecciona un archivo.");
+            if(!confirm("¿Reemplazar toda la base de datos?")) return;
+
+            try {
+                progreso.innerText = "🧹 Limpiando datos anteriores...";
+                const snapshot = await getDocs(colUbicaciones);
+                let batch = writeBatch(db);
+                snapshot.docs.forEach(d => batch.delete(d.ref));
+                await batch.commit();
+
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                    
+                    batch = writeBatch(db);
+                    let count = 0;
+                    for (const fila of jsonData) {
+                        const cod = String(fila.Codigo || fila.codigo || "").trim();
+                        if(cod) {
+                            batch.set(doc(db, "ubicaciones_diarias", cod), {
+                                nombre: String(fila.Nombre || fila.Producto || fila.nombre || "Sin Nombre"),
+                                ubicacion: String(fila.Ubicacion || fila.ubicacion || "N/A")
+                            });
+                            count++;
+                            if (count % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+                        }
+                    }
+                    await batch.commit();
+                    alert("¡Actualización exitosa!");
+                    location.reload();
+                };
+                reader.readAsArrayBuffer(fileInput.files[0]);
+            } catch (error) { alert("Error: " + error.message); }
+        }
+
+        // 3. REGISTRAR CON ENTER
+        window.guardarDatos = async () => {
+            const input = document.getElementById('codigoInput');
+            const codigo = input.value.trim();
+            if (!codigo) return;
+
+            const info = mapaProductos[codigo] || { nombre: "No encontrado", ubicacion: "No definida" };
+
+            try {
+                await addDoc(colRegistros, {
+                    codigo: codigo,
+                    nombre: info.nombre,
+                    ubicacion: info.ubicacion,
+                    timestamp: serverTimestamp()
+                });
+                input.value = '';
+                input.focus();
+            } catch (e) { alert("Error al guardar: " + e.message); }
+        }
+
+        document.getElementById('codigoInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.guardarDatos();
+            }
+        });
+
+        // 4. TABLA EN TIEMPO REAL
+        onSnapshot(query(colRegistros, orderBy("timestamp", "desc")), (snapshot) => {
+            const tabla = document.getElementById('tablaCuerpo');
+            tabla.innerHTML = "";
+            snapshot.docs.forEach(docSnap => {
+                const data = docSnap.data();
+                const fecha = data.timestamp ? data.timestamp.toDate().toLocaleString() : "...";
+                tabla.innerHTML += `
+                    <tr>
+                        <td><span class="nombre-tag">${data.nombre}</span></td>
+                        <td><strong>${data.codigo}</strong></td>
+                        <td><span class="ubicacion-tag">${data.ubicacion}</span></td>
+                        <td style="font-size: 11px;">${fecha}</td>
+                        <td><button class="btn-borrar" onclick="borrarDato('${docSnap.id}')">X</button></td>
+                    </tr>
+                `;
+            });
+        });
+
+        window.borrarDato = async (id) => {
+            if(confirm("¿Eliminar registro?")) await deleteDoc(doc(db, "registros", id));
+        }
+    </script>
+</body>
+</html>
