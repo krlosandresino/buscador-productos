@@ -31,7 +31,10 @@
         button { padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
         .btn-guardar { background-color: #28a745; }
         .btn-borrar { background-color: #dc3545; padding: 6px 12px; font-size: 12px; }
+        .btn-limpiar { background-color: #f44336; }
         .btn-admin { background-color: #6c757d; margin-top: 10px;}
+
+        button:active { transform: scale(0.98); }
 
         /* Tabla */
         .table-container { overflow-x: auto; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
@@ -45,7 +48,7 @@
             body { padding: 10px; }
             .form-group { padding: 15px; }
             input#codigoInput { width: 100%; font-size: 20px; }
-            .btn-guardar { width: 100%; }
+            .btn-guardar, .btn-limpiar { width: 100%; margin-left: 0; }
         }
     </style>
 </head>
@@ -75,6 +78,7 @@
                placeholder="Ingrese o escanee el código" 
                autofocus>
         <button class="btn-guardar" onclick="guardarDatos()">+ Agregar</button>
+        <button class="btn-limpiar" onclick="limpiarRegistros()">🗑️ Limpiar Registros</button>
     </div>
 
     <div class="table-container">
@@ -143,6 +147,27 @@
             } catch (e) { alert("Error al registrar: " + e.message); }
         };
 
+        // Función para limpiar todos los registros de la tabla
+        window.limpiarRegistros = async () => {
+            if (!confirm("¿Seguro que quieres borrar TODOS los registros de la tabla?")) return;
+            
+            try {
+                const querySnapshot = await getDocs(colRegistros);
+                const batch = writeBatch(db);
+                
+                if (querySnapshot.empty) return alert("No hay registros para borrar.");
+
+                querySnapshot.forEach((doc) => {
+                    batch.delete(doc.ref);
+                });
+
+                await batch.commit();
+                alert("Registros borrados correctamente.");
+            } catch (e) {
+                alert("Error al borrar registros: " + e.message);
+            }
+        };
+
         document.getElementById('codigoInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); window.guardarDatos(); }
         });
@@ -178,7 +203,6 @@
                 const workbook = XLSX.read(data, {type: 'array'});
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
                 
-                // Limpiar base anterior
                 const oldDocs = await getDocs(colUbicaciones);
                 let batch = writeBatch(db);
                 oldDocs.forEach(d => batch.delete(d.ref));
