@@ -16,7 +16,7 @@
         summary:hover { background: #ced4da; }
         .admin-content { padding: 20px; text-align: center; border-top: 1px solid #ccc; }
 
-        /* Formulario original con mejora de flex-grow */
+        /* Formulario original */
         .form-group { 
             background: white; 
             padding: 25px; 
@@ -35,7 +35,7 @@
             border: 1px solid #ddd; 
             border-radius: 6px; 
             font-size: 18px; 
-            flex: 2; /* Crece más que los botones */
+            flex: 2; 
             min-width: 150px; 
         }
         
@@ -47,13 +47,13 @@
 
         button:active { transform: scale(0.98); }
 
-        /* Tabla original con contenedor de scroll */
+        /* Tabla original */
         .table-container { 
-            overflow-x: auto; /* Permite scroll lateral si la tabla es muy ancha */
+            overflow-x: auto; 
             background: white; 
             border-radius: 10px; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-            -webkit-overflow-scrolling: touch; /* Scroll suave en iOS */
+            -webkit-overflow-scrolling: touch; 
         }
         table { width: 100%; border-collapse: collapse; min-width: 500px; }
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
@@ -61,20 +61,16 @@
         
         .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
 
-        /* AJUSTES ESPECÍFICOS PARA MÓVIL (PANTALLAS PEQUEÑAS) */
+        /* AJUSTES MÓVIL */
         @media (max-width: 600px) {
             body { padding: 10px; }
             h1 { font-size: 20px; }
             .form-group { padding: 15px; gap: 8px; }
-            
-            /* Los botones ocupan el ancho completo en móvil para ser más fáciles de tocar */
             input#codigoInput { width: 100%; flex: none; font-size: 16px; order: 1; }
             .btn-guardar { width: 100%; flex: none; order: 2; }
             .btn-limpiar { width: 100%; flex: none; order: 3; }
-            
-            /* Ajuste de tamaño de fuente en tabla para móvil */
             th, td { padding: 10px 8px; font-size: 13px; }
-            .btn-borrar { padding: 10px 15px; font-size: 14px; } /* Botón X más grande para dedos */
+            .btn-borrar { padding: 10px 15px; font-size: 14px; } 
         }
     </style>
 </head>
@@ -122,7 +118,6 @@
     </div>
 
     <script type="module">
-        /* El script se mantiene idéntico al tuyo para no romper la funcionalidad de Firebase */
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp, deleteDoc, doc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
@@ -142,6 +137,7 @@
 
         let mapaProductos = {};
 
+        // Cargar mapa localmente para búsqueda rápida
         async function cargarBase() {
             const status = document.getElementById('statusDb');
             try {
@@ -154,6 +150,7 @@
         }
         cargarBase();
 
+        // Guardar registro de búsqueda
         window.guardarDatos = async () => {
             const input = document.getElementById('codigoInput');
             const cod = input.value.trim();
@@ -171,18 +168,21 @@
             } catch (e) { alert("Error al guardar."); }
         };
 
+        // Limpiar historial
         window.limpiarRegistros = async () => {
-            if (!confirm("¿Borrar todos los registros?")) return;
+            if (!confirm("¿Borrar todos los registros de la tabla?")) return;
             const querySnapshot = await getDocs(colRegistros);
             const batch = writeBatch(db);
             querySnapshot.forEach((doc) => batch.delete(doc.ref));
             await batch.commit();
         };
 
+        // Evento tecla Enter
         document.getElementById('codigoInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); window.guardarDatos(); }
         });
 
+        // Escuchar cambios en la tabla
         onSnapshot(query(colRegistros, orderBy("timestamp", "desc")), (snap) => {
             const tabla = document.getElementById('tablaCuerpo');
             tabla.innerHTML = "";
@@ -200,38 +200,85 @@
             });
         });
 
-        window.borrarDato = async (id) => { if(confirm("¿Eliminar?")) await deleteDoc(doc(db, "registros", id)); };
+        window.borrarDato = async (id) => { if(confirm("¿Eliminar fila?")) await deleteDoc(doc(db, "registros", id)); };
 
+        // ---------------------------------------------------------
+        // FUNCIÓN DE CARGA MASIVA CORREGIDA (Lotes de 400)
+        // ---------------------------------------------------------
         window.procesarYSubirExcel = async () => {
             const fileInput = document.getElementById('excelInput');
             const progreso = document.getElementById('progresoCarga');
+            
             if(!fileInput.files[0]) return alert("Selecciona un archivo.");
-            progreso.innerText = "Procesando...";
+            
+            progreso.innerText = "⏳ Leyendo Excel...";
+            
             const reader = new FileReader();
             reader.onload = async (e) => {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
-                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                const oldDocs = await getDocs(colUbicaciones);
-                let batch = writeBatch(db);
-                oldDocs.forEach(d => batch.delete(d.ref));
-                await batch.commit();
-                batch = writeBatch(db);
-                let count = 0;
-                jsonData.forEach(f => {
-                    const c = String(f.Codigo || f.codigo || "").trim();
-                    if(c) {
-                        batch.set(doc(db, "ubicaciones_diarias", c), {
-                            nombre: String(f.Nombre || f.Producto || f.nombre || "Sin nombre"),
-                            ubicacion: String(f.Ubicacion || f.ubicacion || "N/A")
-                        });
-                        count++;
-                        if(count % 400 === 0) { batch.commit(); batch = writeBatch(db); }
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+                    // 1. ELIMINAR DATOS ANTIGUOS POR LOTES
+                    progreso.innerText = "🗑️ Eliminando base anterior...";
+                    const oldDocs = await getDocs(colUbicaciones);
+                    const docsArray = oldDocs.docs;
+                    
+                    let batch = writeBatch(db);
+                    let contadorBatch = 0;
+
+                    for (let i = 0; i < docsArray.length; i++) {
+                        batch.delete(docsArray[i].ref);
+                        contadorBatch++;
+                        
+                        if (contadorBatch >= 400) {
+                            await batch.commit();
+                            batch = writeBatch(db);
+                            contadorBatch = 0;
+                            progreso.innerText = `🗑️ Borrando... (${i} eliminados)`;
+                        }
                     }
-                });
-                await batch.commit();
-                alert("Actualizado correctamente.");
-                location.reload();
+                    if (contadorBatch > 0) await batch.commit();
+
+                    // 2. SUBIR NUEVOS DATOS POR LOTES
+                    progreso.innerText = "☁️ Preparando subida...";
+                    batch = writeBatch(db);
+                    contadorBatch = 0;
+                    let totalProcesados = 0;
+
+                    for (const f of jsonData) {
+                        const c = String(f.Codigo || f.codigo || "").trim();
+                        if(c) {
+                            batch.set(doc(db, "ubicaciones_diarias", c), {
+                                nombre: String(f.Nombre || f.Producto || f.nombre || "Sin nombre"),
+                                ubicacion: String(f.Ubicacion || f.ubicacion || "N/A")
+                            });
+                            
+                            contadorBatch++;
+                            totalProcesados++;
+
+                            if(contadorBatch >= 400) {
+                                await batch.commit();
+                                batch = writeBatch(db);
+                                contadorBatch = 0;
+                                progreso.innerText = `☁️ Subiendo: ${totalProcesados} / ${jsonData.length}`;
+                            }
+                        }
+                    }
+                    if (contadorBatch > 0) await batch.commit();
+
+                    progreso.innerText = "✅ ¡Carga Completa!";
+                    progreso.style.color = "green";
+                    alert(`Éxito: Se cargaron ${totalProcesados} productos.`);
+                    location.reload(); // Recargar para actualizar memoria local
+
+                } catch (error) {
+                    console.error(error);
+                    progreso.innerText = "❌ Error: " + error.message;
+                    progreso.style.color = "red";
+                    alert("Error: " + error.message);
+                }
             };
             reader.readAsArrayBuffer(fileInput.files[0]);
         };
