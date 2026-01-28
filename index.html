@@ -200,7 +200,7 @@
             });
         });
 
-        window.borrarDato = async (id) => { if(confirm("¿Eliminar fila?")) await deleteDoc(doc(db, "registros", id)); };
+        window.borrarDato = async (id) => { if(confirm("¿Eliminar código?")) await deleteDoc(doc(db, "registros", id)); };
 
         // ---------------------------------------------------------
         // FUNCIÓN DE CARGA MASIVA CORREGIDA (Lotes de 400)
