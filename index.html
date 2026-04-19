@@ -155,7 +155,7 @@
             const input = document.getElementById('codigoInput');
             const cod = input.value.trim();
             if(!cod) return;
-            const info = mapaProductos[cod] || { nombre: "No encontrado", ubicacion: "N/A" };
+            const info = mapaProductos[cod] || { nombre: "No encontrado", ubicacion: "No encontrado" };
             try {
                 await addDoc(colRegistros, {
                     codigo: cod,
@@ -252,7 +252,7 @@
                         if(c) {
                             batch.set(doc(db, "ubicaciones_diarias", c), {
                                 nombre: String(f.Nombre || f.Producto || f.nombre || "Sin nombre"),
-                                ubicacion: String(f.Ubicacion || f.ubicacion || "N/A")
+                                ubicacion: String(f.Ubicacion || f.ubicacion || "No encontrado")
                             });
                             
                             contadorBatch++;
