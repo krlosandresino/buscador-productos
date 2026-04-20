@@ -137,7 +137,6 @@
 
         let mapaProductos = {};
 
-        // Cargar mapa localmente para búsqueda rápida
         async function cargarBase() {
             const status = document.getElementById('statusDb');
             try {
@@ -150,7 +149,6 @@
         }
         cargarBase();
 
-        // Guardar registro de búsqueda
         window.guardarDatos = async () => {
             const input = document.getElementById('codigoInput');
             const cod = input.value.trim();
@@ -168,7 +166,6 @@
             } catch (e) { alert("Error al guardar."); }
         };
 
-        // Limpiar historial
         window.limpiarRegistros = async () => {
             if (!confirm("¿Borrar todos los registros de la tabla?")) return;
             const querySnapshot = await getDocs(colRegistros);
@@ -177,21 +174,24 @@
             await batch.commit();
         };
 
-        // Evento tecla Enter
         document.getElementById('codigoInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); window.guardarDatos(); }
         });
 
-        // Escuchar cambios en la tabla
+        // ESCUCHAR CAMBIOS EN LA TABLA (MODIFICADO PARA LIMITAR CARACTERES)
         onSnapshot(query(colRegistros, orderBy("timestamp", "desc")), (snap) => {
             const tabla = document.getElementById('tablaCuerpo');
             tabla.innerHTML = "";
             snap.docs.forEach(d => {
                 const data = d.data();
+                
+                // Lógica para limitar a 20 caracteres
+                const nombreCorto = data.nombre.length > 20 ? data.nombre.substring(0, 20) + "..." : data.nombre;
+                
                 const fecha = data.timestamp ? data.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "...";
                 tabla.innerHTML += `
                     <tr>
-                        <td>${data.nombre}</td>
+                        <td>${nombreCorto}</td>
                         <td><strong>${data.codigo}</strong></td>
                         <td><span class="ubicacion-tag">${data.ubicacion}</span></td>
                         <td style="font-size: 11px;">${fecha}</td>
@@ -202,9 +202,6 @@
 
         window.borrarDato = async (id) => { if(confirm("¿Eliminar fila?")) await deleteDoc(doc(db, "registros", id)); };
 
-        // ---------------------------------------------------------
-        // FUNCIÓN DE CARGA MASIVA CORREGIDA (Lotes de 400)
-        // ---------------------------------------------------------
         window.procesarYSubirExcel = async () => {
             const fileInput = document.getElementById('excelInput');
             const progreso = document.getElementById('progresoCarga');
@@ -220,7 +217,6 @@
                     const workbook = XLSX.read(data, {type: 'array'});
                     const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
 
-                    // 1. ELIMINAR DATOS ANTIGUOS POR LOTES
                     progreso.innerText = "🗑️ Eliminando base anterior...";
                     const oldDocs = await getDocs(colUbicaciones);
                     const docsArray = oldDocs.docs;
@@ -241,7 +237,6 @@
                     }
                     if (contadorBatch > 0) await batch.commit();
 
-                    // 2. SUBIR NUEVOS DATOS POR LOTES
                     progreso.innerText = "☁️ Preparando subida...";
                     batch = writeBatch(db);
                     contadorBatch = 0;
@@ -271,7 +266,7 @@
                     progreso.innerText = "✅ ¡Carga Completa!";
                     progreso.style.color = "green";
                     alert(`Éxito: Se cargaron ${totalProcesados} productos.`);
-                    location.reload(); // Recargar para actualizar memoria local
+                    location.reload();
 
                 } catch (error) {
                     console.error(error);
