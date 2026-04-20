@@ -186,7 +186,7 @@
                 const data = d.data();
                 
                 // Lógica para limitar a 20 caracteres
-                const nombreCorto = data.nombre.length > 20 ? data.nombre.substring(0, 20) + "..." : data.nombre;
+                const nombreCorto = data.nombre.length > 20 ? data.nombre.substring(0, 15) + "..." : data.nombre;
                 
                 const fecha = data.timestamp ? data.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "...";
                 tabla.innerHTML += `
