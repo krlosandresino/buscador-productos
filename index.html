@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Buscador código</title>
+    <title>🔍 Buscador de Productos</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <style>
         /* Estilos base originales */
@@ -76,16 +76,16 @@
 </head>
 <body>
 
-    <h1>📦 Buscar código</h1>
+    <h1>🔍 Consulta de Ubicaciones</h1>
 
     <details>
         <summary>⚙️ Panel de Actualización de Ubicaciones</summary>
         <div class="admin-content">
-            <h3>Cargar Base de Datos</h3>
+            <h3>Cargar Base de Datos de Ubicaciones</h3>
             <p style="font-size: 13px; margin-bottom: 10px;">⚠️ Al subir, se reemplazará la base actual.</p>
             <input type="file" id="excelInput" accept=".xlsx, .xls" style="max-width: 100%;">
             <br>
-            <button class="btn-admin" onclick="procesarYSubirExcel()">☁️ Cargar y actualizar</button>
+            <button class="btn-admin" onclick="procesarYSubirExcel()">☁️ Cargar y Actualizar Todo</button>
             <div id="progresoCarga" style="margin-top: 10px; font-weight: bold; color: #007bff;"></div>
         </div>
     </details>
@@ -186,7 +186,7 @@
                 const data = d.data();
                 
                 // Lógica para limitar a 20 caracteres
-                const nombreCorto = data.nombre.length > 20 ? data.nombre.substring(0, 15) + "..." : data.nombre;
+                const nombreCorto = data.nombre.length > 20 ? data.nombre.substring(0, 20) + "..." : data.nombre;
                 
                 const fecha = data.timestamp ? data.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "...";
                 tabla.innerHTML += `
