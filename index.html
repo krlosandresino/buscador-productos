@@ -143,7 +143,7 @@
                 const querySnapshot = await getDocs(colUbicaciones);
                 mapaProductos = {};
                 querySnapshot.forEach(doc => { mapaProductos[doc.id] = doc.data(); });
-                status.innerHTML = `✅ ${Object.keys(mapaProductos).length} productos listos.`;
+                status.innerHTML = `✅ ${Object.keys(mapaProductos).length} productos sincronizadas.`;
                 status.style.color = "green";
             } catch (e) { status.innerHTML = "❌ Error de conexión."; }
         }
