@@ -166,12 +166,30 @@
             } catch (e) { alert("Error al guardar."); }
         };
 
-        window.limpiarRegistros = async () => {
-            if (!confirm("¿Borrar todos los registros de la tabla?")) return;
+        // Modificado para leer la hora real de Firebase en limpiezas automáticas
+        window.limpiarRegistros = async (esAutomatico = false) => {
+            // Solo pide confirmación si NO es una limpieza automática
+            if (!esAutomatico && !confirm("¿Borrar todos los registros de la tabla?")) return;
+            
             const querySnapshot = await getDocs(colRegistros);
             const batch = writeBatch(db);
-            querySnapshot.forEach((doc) => batch.delete(doc.ref));
+            const tiempoLimite = Date.now() - 1800000; // 30 minutos atrás en milisegundos
+            
+            querySnapshot.forEach((docSnap) => {
+                if (esAutomatico) {
+                    const data = docSnap.data();
+                    // Borra solo si tiene timestamp guardado y ya pasaron 30 minutos reales
+                    if (data.timestamp && data.timestamp.toMillis() < tiempoLimite) {
+                        batch.delete(docSnap.ref);
+                    }
+                } else {
+                    // Si presionas el botón rojo manual, borra todo sin importar el tiempo
+                    batch.delete(docSnap.ref);
+                }
+            });
+            
             await batch.commit();
+            if (esAutomatico) console.log("Revisión en segundo plano: Registros antiguos eliminados.");
         };
 
         document.getElementById('codigoInput').addEventListener('keydown', (e) => {
@@ -277,6 +295,13 @@
             };
             reader.readAsArrayBuffer(fileInput.files[0]);
         };
+
+        // --- NUEVA LÓGICA DE LIMPIEZA AUTOMÁTICA ---
+        // Se ejecuta cada 1 minuto (60000 milisegundos) para evaluar los tiempos reales
+        setInterval(() => {
+            window.limpiarRegistros(true); 
+        }, 60000);
+        
     </script>
 </body>
 </html>
