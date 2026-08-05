@@ -261,11 +261,11 @@
                     let totalProcesados = 0;
 
                     for (const f of jsonData) {
-                        const c = String(f.Codigo || f.codigo || "").trim();
+                        const c = String(f.Codigo || f["Código Producto"] || f.codigo || "").trim();
                         if(c) {
                             batch.set(doc(db, "ubicaciones_diarias", c), {
-                                nombre: String(f.Nombre || f.Producto || f.nombre || "Sin nombre"),
-                                ubicacion: String(f.Ubicacion || f.ubicacion || "No encontrado")
+                                nombre: String(f.Nombre || f["Descripción"] || f.Producto || f.nombre || "Sin nombre"),
+                                ubicacion: String(f.Ubicacion || f.Caja || f.ubicacion || "No encontrado")
                             });
                             
                             contadorBatch++;
