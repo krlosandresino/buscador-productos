@@ -153,6 +153,11 @@
             const input = document.getElementById('codigoInput');
             const cod = input.value.trim();
             if(!cod) return;
+            
+            // Limpiamos la caja inmediatamente para el siguiente escaneo
+            input.value = '';
+            input.focus();
+
             const info = mapaProductos[cod] || { nombre: "No encontrado", ubicacion: "No encontrado" };
             try {
                 await addDoc(colRegistros, {
@@ -161,9 +166,9 @@
                     ubicacion: info.ubicacion,
                     timestamp: serverTimestamp()
                 });
-                input.value = '';
-                input.focus();
-            } catch (e) { alert("Error al guardar."); }
+            } catch (e) { 
+                alert("Error al guardar en la nube. Revisa tu conexión."); 
+            }
         };
 
         // Modificado para leer la hora real de Firebase en limpiezas automáticas
@@ -196,18 +201,17 @@
             if (e.key === 'Enter') { e.preventDefault(); window.guardarDatos(); }
         });
 
-        // ESCUCHAR CAMBIOS EN LA TABLA (MODIFICADO PARA LIMITAR CARACTERES)
+        // ESCUCHAR CAMBIOS EN LA TABLA (OPTIMIZADO EN MEMORIA)
         onSnapshot(query(colRegistros, orderBy("timestamp", "desc")), (snap) => {
             const tabla = document.getElementById('tablaCuerpo');
-            tabla.innerHTML = "";
+            let contenidoHTML = ""; // Variable temporal para guardar las filas
+            
             snap.docs.forEach(d => {
                 const data = d.data();
-                
-                // Lógica para limitar a 20 caracteres
                 const nombreCorto = data.nombre.length > 20 ? data.nombre.substring(0, 20) + "..." : data.nombre;
-                
                 const fecha = data.timestamp ? data.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "...";
-                tabla.innerHTML += `
+                
+                contenidoHTML += `
                     <tr>
                         <td>${nombreCorto}</td>
                         <td><strong>${data.codigo}</strong></td>
@@ -216,6 +220,9 @@
                         <td><button class="btn-borrar" onclick="borrarDato('${d.id}')">X</button></td>
                     </tr>`;
             });
+            
+            // Inyectamos todo el HTML de golpe al final
+            tabla.innerHTML = contenidoHTML;
         });
 
         window.borrarDato = async (id) => { if(confirm("¿Eliminar fila?")) await deleteDoc(doc(db, "registros", id)); };
