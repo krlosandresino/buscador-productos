@@ -180,7 +180,7 @@
         // Modificado para leer la hora real de Firebase en limpiezas automáticas
         window.limpiarRegistros = async (esAutomatico = false) => {
             // Solo pide confirmación si NO es una limpieza automática
-            if (!esAutomatico && !confirm("¿Borrar todos los registros de la tabla?")) return;
+            if (!esAutomatico && !confirm("¿Borrar todos los registros almacenados?")) return;
             
             const querySnapshot = await getDocs(colRegistros);
             const batch = writeBatch(db);
@@ -231,7 +231,7 @@
             tabla.innerHTML = contenidoHTML;
         });
 
-        window.borrarDato = async (id) => { if(confirm("¿Eliminar fila?")) await deleteDoc(doc(db, "registros", id)); };
+        window.borrarDato = async (id) => { if(confirm("¿Eliminar código?")) await deleteDoc(doc(db, "registros", id)); };
 
         window.procesarYSubirExcel = async () => {
             const fileInput = document.getElementById('excelInput');
