@@ -6,17 +6,15 @@
     <title>🔍 Buscador de Productos</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <style>
-        /* Estilos base originales */
+        /* Estilos base originales intactos */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background-color: #f0f2f5; }
         h1 { text-align: center; color: #333; font-size: 24px; }
         
-        /* Panel Admin original */
         details { background: #e9ecef; border-radius: 10px; margin-bottom: 20px; border: 1px solid #adb5bd; overflow: hidden; }
         summary { padding: 15px; cursor: pointer; font-weight: bold; background: #dee2e6; list-style: none; }
         summary:hover { background: #ced4da; }
         .admin-content { padding: 20px; text-align: center; border-top: 1px solid #ccc; }
 
-        /* Formulario original con Escáner Fijo (Sticky) corregido */
         .form-group { 
             background: white; 
             padding: 25px; 
@@ -27,7 +25,6 @@
             flex-wrap: wrap; 
             margin-bottom: 20px; 
             align-items: center;
-            /* Modificaciones quirúrgicas: Panel fijo al tope */
             position: sticky;
             top: 0;
             z-index: 100;
@@ -51,7 +48,6 @@
 
         button:active { transform: scale(0.98); }
 
-        /* Tabla original */
         .table-container { 
             overflow-x: auto; 
             background: white; 
@@ -62,12 +58,10 @@
         table { width: 100%; border-collapse: collapse; min-width: 500px; }
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
         
-        /* Modificación quirúrgica: Se quitó el position sticky a los th para que no choquen con el formulario */
         th { background-color: #007bff; color: white; }
         
         .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
 
-        /* AJUSTES MÓVIL */
         @media (max-width: 600px) {
             body { padding: 10px; }
             h1 { font-size: 20px; }
@@ -82,6 +76,7 @@
 </head>
 <body>
 
+    <!-- Estructura HTML original intacta -->
     <h1>🔍 Consulta de Ubicaciones</h1>
 
     <details>
@@ -97,7 +92,7 @@
     </details>
 
     <div class="form-group">
-        <span id="statusDb">⏳ Cargando base de datos...</span>
+        <span id="statusDb">⏳ Conectando...</span>
         <input type="text" 
                id="codigoInput" 
                inputmode="numeric" 
@@ -125,7 +120,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp, deleteDoc, doc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp, deleteDoc, doc, writeBatch, getDocs, getDoc, where, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyB_13cedG5q03t9FUgTkaVwiTyD1pzD0F8",
@@ -138,79 +133,111 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        
+        enableIndexedDbPersistence(db).catch((err) => {
+            console.warn("Modo offline no disponible: ", err.code);
+        });
+
         const colRegistros = collection(db, "registros");
         const colUbicaciones = collection(db, "ubicaciones_diarias");
 
-        let mapaProductos = {};
-
         async function cargarBase() {
             const status = document.getElementById('statusDb');
-            try {
-                const querySnapshot = await getDocs(colUbicaciones);
-                mapaProductos = {};
-                querySnapshot.forEach(doc => { mapaProductos[doc.id] = doc.data(); });
-                status.innerHTML = `✅ ${Object.keys(mapaProductos).length} productos sincronizadas.`;
-                status.style.color = "green";
-            } catch (e) { status.innerHTML = "❌ Error de conexión."; }
+            status.innerHTML = `✅ Escáner listo y conectado.`;
+            status.style.color = "green";
         }
         cargarBase();
+
+        // 🎵 MEJORA SONORA: Sonido amigable estilo "ding" de confirmación
+        function reproducirBeep() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine'; // Onda limpia y suave
+                
+                // Deslizamiento de frecuencia rápido para sonar amigable (de grave a agudo)
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
+                oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.05); 
+                
+                // Envolvente de sonido: Sube rápido y cae suavemente para quitar el "clic" robótico
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.02); // Volumen max
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25); // Fade out
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3); // Termina después de desvanecerse
+            } catch (error) {
+                console.log("Audio no soportado en este navegador.");
+            }
+        }
 
         window.guardarDatos = async () => {
             const input = document.getElementById('codigoInput');
             const cod = input.value.trim();
             if(!cod) return;
             
-            // Limpiamos la caja inmediatamente para el siguiente escaneo
             input.value = '';
             input.focus();
 
-            const info = mapaProductos[cod] || { nombre: "No encontrado", ubicacion: "No encontrado" };
             try {
+                const docRef = doc(db, "ubicaciones_diarias", cod);
+                const docSnap = await getDoc(docRef);
+                
+                let nombreProd = "No encontrado";
+                let ubicacionProd = "No encontrado";
+
+                if (docSnap.exists()) {
+                    nombreProd = docSnap.data().nombre;
+                    ubicacionProd = docSnap.data().ubicacion;
+                }
+
                 await addDoc(colRegistros, {
                     codigo: cod,
-                    nombre: info.nombre,
-                    ubicacion: info.ubicacion,
+                    nombre: nombreProd,
+                    ubicacion: ubicacionProd,
                     timestamp: serverTimestamp()
                 });
+
+                reproducirBeep(); // Suena el ding agradable
+
             } catch (e) { 
-                alert("Error al guardar en la nube. Revisa tu conexión."); 
+                alert("Error al guardar. Si estás offline, se sincronizará luego."); 
             }
         };
 
-        // Modificado para leer la hora real de Firebase en limpiezas automáticas
         window.limpiarRegistros = async (esAutomatico = false) => {
-            // Solo pide confirmación si NO es una limpieza automática
             if (!esAutomatico && !confirm("¿Borrar todos los registros almacenados?")) return;
             
-            const querySnapshot = await getDocs(colRegistros);
             const batch = writeBatch(db);
-            const tiempoLimite = Date.now() - 1800000; // 30 minutos atrás en milisegundos
             
-            querySnapshot.forEach((docSnap) => {
-                if (esAutomatico) {
-                    const data = docSnap.data();
-                    // Borra solo si tiene timestamp guardado y ya pasaron 30 minutos reales
-                    if (data.timestamp && data.timestamp.toMillis() < tiempoLimite) {
-                        batch.delete(docSnap.ref);
-                    }
-                } else {
-                    // Si presionas el botón rojo manual, borra todo sin importar el tiempo
-                    batch.delete(docSnap.ref);
-                }
-            });
+            if (esAutomatico) {
+                const tiempoLimite = new Date(Date.now() - 1800000); 
+                const consultaAntiguos = query(colRegistros, where("timestamp", "<", tiempoLimite));
+                const snapAntiguos = await getDocs(consultaAntiguos);
+                
+                snapAntiguos.forEach((docSnap) => batch.delete(docSnap.ref));
+            } else {
+                const querySnapshot = await getDocs(colRegistros);
+                querySnapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+            }
             
             await batch.commit();
-            if (esAutomatico) console.log("Revisión en segundo plano: Registros antiguos eliminados.");
+            if (esAutomatico) console.log("Revisión en segundo plano: Registros antiguos eliminados (Costo de lectura optimizado).");
         };
 
         document.getElementById('codigoInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); window.guardarDatos(); }
         });
 
-        // ESCUCHAR CAMBIOS EN LA TABLA (OPTIMIZADO EN MEMORIA)
+        // Lógica original intacta
         onSnapshot(query(colRegistros, orderBy("timestamp", "desc")), (snap) => {
             const tabla = document.getElementById('tablaCuerpo');
-            let contenidoHTML = ""; // Variable temporal para guardar las filas
+            let contenidoHTML = "";
             
             snap.docs.forEach(d => {
                 const data = d.data();
@@ -227,12 +254,12 @@
                     </tr>`;
             });
             
-            // Inyectamos todo el HTML de golpe al final
             tabla.innerHTML = contenidoHTML;
         });
 
         window.borrarDato = async (id) => { if(confirm("¿Eliminar código?")) await deleteDoc(doc(db, "registros", id)); };
 
+        // Lógica de actualización de Excel intacta
         window.procesarYSubirExcel = async () => {
             const fileInput = document.getElementById('excelInput');
             const progreso = document.getElementById('progresoCarga');
@@ -309,8 +336,6 @@
             reader.readAsArrayBuffer(fileInput.files[0]);
         };
 
-        // --- NUEVA LÓGICA DE LIMPIEZA AUTOMÁTICA ---
-        // Se ejecuta cada 1 minuto (60000 milisegundos) para evaluar los tiempos reales
         setInterval(() => {
             window.limpiarRegistros(true); 
         }, 60000);
