@@ -70,13 +70,23 @@
 
         .table-container { 
             overflow-x: auto; 
+            overflow-y: auto; /* Habilita el scroll vertical interno */
+            max-height: 55vh; /* Limita la altura de la tabla para que no empuje el resto de la página */
             background: white; 
             border-radius: 10px; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
         }
         table { width: 100%; border-collapse: collapse; min-width: 600px; }
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background-color: #343a40; color: white; }
+        
+        th { 
+            background-color: #343a40; 
+            color: white; 
+            position: sticky; /* Hace que el título de la columna se quede pegado arriba */
+            top: 0; 
+            z-index: 10; 
+            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.2); /* Pequeña sombra para diferenciar al deslizar */
+        }
         
         .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
         .responsable-tag { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #c3e6cb; }
@@ -168,9 +178,16 @@
         <h1>📊 Dashboard Devolución Productos</h1>
 
         <div class="header-panel">
-            <div class="stats-box">
-                <h3>Total Escaneos Actualmente</h3>
-                <span id="contadorTotal">0</span>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center;">
+                <div class="stats-box">
+                    <h3>Total Escaneos Actualmente</h3>
+                    <span id="contadorTotal">0</span>
+                </div>
+                <!-- CONTENEDOR: No encontrados (con click) -->
+                <div class="stats-box" style="cursor: pointer; background: #fff3cd; border-color: #ffeeba; transition: transform 0.2s;" onclick="filtrarNoEncontrados()" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'" title="Clic para filtrar únicamente los No Encontrados">
+                    <h3>No Encontrados</h3>
+                    <span id="contadorNoEncontrados" style="color: #856404;">0</span>
+                </div>
             </div>
             <button class="btn-limpiar-historial" onclick="limpiarHistorialCompleto()">🗑️ Borrar Registros</button>
         </div>
@@ -235,7 +252,6 @@
             }
         };
 
-        // Escuchar Enter en Usuario: Salta a Contraseña
         document.getElementById('userAdmin').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -243,7 +259,6 @@
             }
         });
 
-        // Escuchar Enter en Contraseña: Hace el Login
         document.getElementById('passAdmin').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -311,8 +326,8 @@
 
             datosFiltrados = datosGlobales.filter(item => {
                 let coincideTexto = item.codigo.toLowerCase().includes(searchTxt) || 
-                                    item.nombre.toLowerCase().includes(searchTxt) || 
-                                    item.ubicacion.toLowerCase().includes(searchTxt);
+                                    (item.nombre && item.nombre.toLowerCase().includes(searchTxt)) || 
+                                    (item.ubicacion && item.ubicacion.toLowerCase().includes(searchTxt));
                 
                 let coincideResp = (respFiltro === "") || (item.responsable === respFiltro);
                 
@@ -330,8 +345,25 @@
             });
 
             document.getElementById('contadorTotal').innerText = datosFiltrados.length;
+
+            const cantidadNoEncontrados = datosFiltrados.filter(item => 
+                (item.nombre && item.nombre.toLowerCase().includes('no encontrado')) || 
+                (item.ubicacion && item.ubicacion.toLowerCase().includes('no encontrado'))
+            ).length;
+            document.getElementById('contadorNoEncontrados').innerText = cantidadNoEncontrados;
+
             paginaActual = 1; 
             renderizarTabla();
+        };
+
+        window.filtrarNoEncontrados = () => {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput.value.toLowerCase() === 'no encontrado') {
+                searchInput.value = '';
+            } else {
+                searchInput.value = 'no encontrado';
+            }
+            aplicarFiltros();
         };
 
         function renderizarTabla() {
@@ -351,7 +383,7 @@
             }
 
             registrosPagina.forEach(data => {
-                const nombreCorto = data.nombre.length > 25 ? data.nombre.substring(0, 25) + "..." : data.nombre;
+                const nombreCorto = (data.nombre && data.nombre.length > 25) ? data.nombre.substring(0, 25) + "..." : (data.nombre || "");
                 
                 let fechaHora = "...";
                 if (data.timestamp) {
@@ -364,7 +396,7 @@
                         <td><span class="responsable-tag">👤 ${data.responsable || 'DESCONOCIDO'}</span></td>
                         <td>${nombreCorto}</td>
                         <td><strong>${data.codigo}</strong></td>
-                        <td><span class="ubicacion-tag">${data.ubicacion}</span></td>
+                        <td><span class="ubicacion-tag">${data.ubicacion || ''}</span></td>
                         <td style="font-size: 12px; color: #555;">${fechaHora}</td>
                         <td><button class="btn-borrar-individual" onclick="borrarRegistroIndividual('${data.id}')">X</button></td>
                     </tr>`;
@@ -415,9 +447,9 @@
                 }
                 return {
                     "Responsable": d.responsable || "DESCONOCIDO",
-                    "Producto": d.nombre,
+                    "Producto": d.nombre || "",
                     "Código": d.codigo,
-                    "Ubicación": d.ubicacion,
+                    "Ubicación": d.ubicacion || "",
                     "Fecha y Hora": fechaHora
                 };
             });
