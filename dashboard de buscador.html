@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📊 Dashboard - Buscador</title>
+    <!-- Librería para exportar a Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* Estilos base originales intactos */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f0f2f5; }
+        h1 { text-align: center; color: #333; font-size: 26px; }
+        
+        .header-panel { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .stats-box {
+            background: #e9ecef;
+            padding: 15px 25px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #ced4da;
+        }
+
+        .stats-box h3 { margin: 0; font-size: 14px; color: #495057; }
+        .stats-box span { font-size: 24px; font-weight: bold; color: #007bff; }
+
+        button { padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; white-space: nowrap; }
+        .btn-limpiar-historial { background-color: #dc3545; }
+        .btn-limpiar-historial:hover { background-color: #c82333; }
+        .btn-limpiar-historial:active { transform: scale(0.98); }
+
+        .filters-panel {
+            background: white; 
+            padding: 15px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            display: flex; 
+            gap: 10px; 
+            flex-wrap: wrap; 
+            margin-bottom: 20px; 
+            align-items: center;
+        }
+        .filter-input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 150px;
+        }
+        .btn-exportar { background-color: #28a745; }
+        .btn-exportar:hover { background-color: #218838; }
+        .btn-borrar-individual { background-color: #dc3545; padding: 6px 12px; font-size: 12px; }
+        
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; }
+        .pagination button { background: #6c757d; padding: 8px 15px; font-size: 14px; }
+        .pagination button:disabled { background: #ccc; cursor: not-allowed; }
+        #pageInfo { font-weight: bold; color: #555; }
+
+        .table-container { 
+            overflow-x: auto; 
+            background: white; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+        }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #343a40; color: white; }
+        
+        .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
+        .responsable-tag { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #c3e6cb; }
+
+        @media (max-width: 768px) {
+            .header-panel { flex-direction: column; text-align: center; }
+            .btn-limpiar-historial, .btn-exportar { width: 100%; }
+            .filter-input { width: 100%; flex: none; }
+        }
+
+        /* --- ESTILOS PARA EL MODAL DE LOGIN DEL DASHBOARD --- */
+        #adminLoginOverlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .login-box {
+            background: white;
+            padding: 35px 25px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 90%;
+            max-width: 350px;
+        }
+        .login-box h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 22px;
+            margin-bottom: 5px;
+        }
+        .login-box p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            text-align: center;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .login-box input:focus {
+            border-color: #007bff;
+        }
+        .login-box button {
+            width: 100%;
+            padding: 15px;
+            background-color: #343a40;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .login-box button:hover {
+            background-color: #23272b;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- MODAL DE LOGIN ADMIN -->
+    <div id="adminLoginOverlay">
+        <div class="login-box">
+            <h2>🔒 Acceso Restringido</h2>
+            <p>Solo personal autorizado</p>
+            <input type="text" id="userAdmin" placeholder="Usuario" autocomplete="off">
+            <input type="password" id="passAdmin" placeholder="Contraseña">
+            <button onclick="verificarLogin()" id="btnLogin">Ingresar</button>
+        </div>
+    </div>
+
+    <!-- EL DASHBOARD ESTÁ OCULTO INICIALMENTE -->
+    <div id="mainDashboard" style="display: none;">
+        
+        <h1>📊 Dashboard Devolución Productos</h1>
+
+        <div class="header-panel">
+            <div class="stats-box">
+                <h3>Total Escaneos Actualmente</h3>
+                <span id="contadorTotal">0</span>
+            </div>
+            <button class="btn-limpiar-historial" onclick="limpiarHistorialCompleto()">🗑️ Borrar Registros</button>
+        </div>
+
+        <div class="filters-panel">
+            <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Buscar código, producto o ubicación..." onkeyup="aplicarFiltros()">
+            
+            <select id="responsableFilter" class="filter-input" onchange="aplicarFiltros()">
+                <option value="">👤 Todos los operadores</option>
+            </select>
+            
+            <input type="date" id="dateFilter" class="filter-input" onchange="aplicarFiltros()" title="Filtrar por fecha">
+            
+            <button class="btn-exportar" onclick="exportarExcel()">📥 Descargar Excel</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Responsable</th>
+                        <th>Producto</th>
+                        <th>Código</th>
+                        <th>Ubicación</th>
+                        <th>Fecha y Hora</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaDashboard">
+                    <tr><td colspan="6" style="text-align: center;">Cargando datos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button id="btnPrev" onclick="cambiarPagina(-1)" disabled>Anterior</button>
+            <span id="pageInfo">Página 1</span>
+            <button id="btnNext" onclick="cambiarPagina(1)" disabled>Siguiente</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, orderBy, query, writeBatch, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        // --- LÓGICA DE LOGIN ---
+        window.onload = () => {
+            document.getElementById('userAdmin').focus();
+        };
+
+        window.verificarLogin = () => {
+            const user = document.getElementById('userAdmin').value.trim().toLowerCase();
+            const pass = document.getElementById('passAdmin').value.trim();
+
+            if (user === "oriflame" && pass === "2026") {
+                document.getElementById('adminLoginOverlay').style.display = "none";
+                document.getElementById('mainDashboard').style.display = "block";
+            } else {
+                alert("❌ Usuario o contraseña incorrectos.");
+                document.getElementById('passAdmin').value = '';
+                document.getElementById('passAdmin').focus();
+            }
+        };
+
+        // Escuchar Enter en Usuario: Salta a Contraseña
+        document.getElementById('userAdmin').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('passAdmin').focus();
+            }
+        });
+
+        // Escuchar Enter en Contraseña: Hace el Login
+        document.getElementById('passAdmin').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.verificarLogin();
+            }
+        });
+        // --- FIN LÓGICA DE LOGIN ---
+
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB_13cedG5q03t9FUgTkaVwiTyD1pzD0F8",
+            authDomain: "verproductos-40224.firebaseapp.com",
+            projectId: "verproductos-40224",
+            storageBucket: "verproductos-40224.firebasestorage.app",
+            messagingSenderId: "903739745189",
+            appId: "1:903739745189:web:b608225acc87550c85be4c"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const colHistorial = collection(db, "historial_registros");
+
+        let datosGlobales = [];
+        let datosFiltrados = [];
+        let paginaActual = 1;
+        const registrosPorPagina = 50;
+
+        onSnapshot(query(colHistorial, orderBy("timestamp", "desc")), (snap) => {
+            datosGlobales = [];
+            let responsablesUnicos = new Set();
+
+            snap.docs.forEach(d => {
+                const data = d.data();
+                data.id = d.id; 
+                datosGlobales.push(data);
+                
+                if (data.responsable) {
+                    responsablesUnicos.add(data.responsable);
+                }
+            });
+
+            actualizarDropdownResponsables(responsablesUnicos);
+            aplicarFiltros(); 
+        });
+
+        function actualizarDropdownResponsables(setResponsables) {
+            const select = document.getElementById('responsableFilter');
+            const valorActual = select.value;
+            
+            select.innerHTML = '<option value="">👤 Todos los operadores</option>';
+            setResponsables.forEach(resp => {
+                const option = document.createElement('option');
+                option.value = resp;
+                option.textContent = resp;
+                select.appendChild(option);
+            });
+            
+            select.value = valorActual; 
+        }
+
+        window.aplicarFiltros = () => {
+            const searchTxt = document.getElementById('searchInput').value.toLowerCase();
+            const respFiltro = document.getElementById('responsableFilter').value;
+            const fechaFiltro = document.getElementById('dateFilter').value; 
+
+            datosFiltrados = datosGlobales.filter(item => {
+                let coincideTexto = item.codigo.toLowerCase().includes(searchTxt) || 
+                                    item.nombre.toLowerCase().includes(searchTxt) || 
+                                    item.ubicacion.toLowerCase().includes(searchTxt);
+                
+                let coincideResp = (respFiltro === "") || (item.responsable === respFiltro);
+                
+                let coincideFecha = true;
+                if (fechaFiltro && item.timestamp) {
+                    const fechaItem = item.timestamp.toDate();
+                    const year = fechaItem.getFullYear();
+                    const month = String(fechaItem.getMonth() + 1).padStart(2, '0');
+                    const day = String(fechaItem.getDate()).padStart(2, '0');
+                    const fechaFormateada = `${year}-${month}-${day}`;
+                    coincideFecha = (fechaFormateada === fechaFiltro);
+                }
+
+                return coincideTexto && coincideResp && coincideFecha;
+            });
+
+            document.getElementById('contadorTotal').innerText = datosFiltrados.length;
+            paginaActual = 1; 
+            renderizarTabla();
+        };
+
+        function renderizarTabla() {
+            const tabla = document.getElementById('tablaDashboard');
+            let contenidoHTML = "";
+            
+            const inicio = (paginaActual - 1) * registrosPorPagina;
+            const fin = inicio + registrosPorPagina;
+            const registrosPagina = datosFiltrados.slice(inicio, fin);
+
+            if (registrosPagina.length === 0) {
+                tabla.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #666;">No se encontraron registros.</td></tr>`;
+                document.getElementById('pageInfo').innerText = `Página 0 de 0`;
+                document.getElementById('btnPrev').disabled = true;
+                document.getElementById('btnNext').disabled = true;
+                return;
+            }
+
+            registrosPagina.forEach(data => {
+                const nombreCorto = data.nombre.length > 25 ? data.nombre.substring(0, 25) + "..." : data.nombre;
+                
+                let fechaHora = "...";
+                if (data.timestamp) {
+                    const dateObj = data.timestamp.toDate();
+                    fechaHora = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+                
+                contenidoHTML += `
+                    <tr>
+                        <td><span class="responsable-tag">👤 ${data.responsable || 'DESCONOCIDO'}</span></td>
+                        <td>${nombreCorto}</td>
+                        <td><strong>${data.codigo}</strong></td>
+                        <td><span class="ubicacion-tag">${data.ubicacion}</span></td>
+                        <td style="font-size: 12px; color: #555;">${fechaHora}</td>
+                        <td><button class="btn-borrar-individual" onclick="borrarRegistroIndividual('${data.id}')">X</button></td>
+                    </tr>`;
+            });
+            
+            tabla.innerHTML = contenidoHTML;
+
+            const totalPaginas = Math.ceil(datosFiltrados.length / registrosPorPagina);
+            document.getElementById('pageInfo').innerText = `Página ${paginaActual} de ${totalPaginas}`;
+            document.getElementById('btnPrev').disabled = paginaActual === 1;
+            document.getElementById('btnNext').disabled = paginaActual === totalPaginas;
+        }
+
+        window.cambiarPagina = (direccion) => {
+            paginaActual += direccion;
+            renderizarTabla();
+        };
+
+        window.borrarRegistroIndividual = async (id) => {
+            if (confirm("¿Estás seguro de eliminar este registro?")) {
+                await deleteDoc(doc(db, "historial_registros", id));
+            }
+        };
+
+        window.limpiarHistorialCompleto = async () => {
+            if (!confirm("⚠️ ADVERTENCIA: ¿Estás seguro de eliminar TODO el historial?")) return;
+            
+            const batch = writeBatch(db);
+            const querySnapshot = await getDocs(colHistorial);
+            
+            querySnapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+            
+            await batch.commit();
+            alert("Historial del dashboard eliminado correctamente.");
+        };
+
+        window.exportarExcel = () => {
+            if (datosFiltrados.length === 0) {
+                alert("No hay datos para exportar.");
+                return;
+            }
+            
+            const dataParaExcel = datosFiltrados.map(d => {
+                let fechaHora = "";
+                if (d.timestamp) {
+                    const dateObj = d.timestamp.toDate();
+                    fechaHora = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
+                }
+                return {
+                    "Responsable": d.responsable || "DESCONOCIDO",
+                    "Producto": d.nombre,
+                    "Código": d.codigo,
+                    "Ubicación": d.ubicacion,
+                    "Fecha y Hora": fechaHora
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(dataParaExcel);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Historial_Filtrado");
+            
+            const hoy = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(workbook, `Reporte_Dashboard_${hoy}.xlsx`);
+        };
+    </script>
+</body>
+</html>
