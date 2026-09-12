@@ -265,12 +265,25 @@
 
         window.ingresarResponsable = () => {
             const input = document.getElementById('responsableInput');
-            if(input.value.trim() === "") {
+            const valorIngresado = input.value.trim().toUpperCase();
+
+            if(valorIngresado === "") {
                 alert("Por favor, ingrese un nombre para continuar.");
                 input.focus();
                 return;
             }
-            nombreResponsable = input.value.trim().toUpperCase();
+
+            // Validación estricta del operador: Solo permite los nombres de la lista
+            const operadoresValidos = ["CARLOS", "FREDDY", "MIGUEL", "YURI", "MERCEDES", "KEVIN", "JOEL", "EDDY", "CARLA", "SHIRLEY", "MARIA LUISA", "LUISA", "HUGO", "ANTONIO"];
+            
+            if (!operadoresValidos.includes(valorIngresado)) {
+                alert("Nombre no reconocido. Por favor seleccione o escriba un nombre válido de la lista.");
+                input.value = "";
+                input.focus();
+                return;
+            }
+
+            nombreResponsable = valorIngresado;
             
             // Guardar nombre en sesión temporal
             sessionStorage.setItem('operadorGuardado', nombreResponsable);
