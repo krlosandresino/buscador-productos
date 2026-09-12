@@ -9,10 +9,19 @@
         /* Estilos base originales intactos */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background-color: #f0f2f5; }
         
-        .top-nav { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 15px; }
+        .top-nav { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 15px; gap: 15px; }
         
         .btn-logout { background-color: #6c757d; padding: 8px 15px; font-size: 13px; border-radius: 6px; border: none; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-logout:hover { background-color: #5a6268; }
+
+        /* --- NUEVO: ESTILOS PARA INDICADOR DE RED --- */
+        .network-status { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: bold; background: white; padding: 6px 12px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: 0.3s; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .network-status.online { color: #28a745; border: 1px solid #c3e6cb; }
+        .network-status.online .status-dot { background-color: #28a745; box-shadow: 0 0 5px #28a745; }
+        .network-status.offline { color: #dc3545; border: 1px solid #f5c6cb; }
+        .network-status.offline .status-dot { background-color: #dc3545; box-shadow: 0 0 5px #dc3545; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
         h1 { text-align: center; color: #333; font-size: 24px; margin-top: 5px; }
         
@@ -176,8 +185,12 @@
         </div>
     </div>
 
-    <!-- Navegación superior con botón de cerrar sesión -->
+    <!-- Navegación superior con botón de cerrar sesión y estado de red -->
     <div class="top-nav">
+        <!-- Indicador visual de red añadido -->
+        <div id="networkStatus" class="network-status online">
+            <span class="status-dot"></span> <span class="status-text">Online</span>
+        </div>
         <button onclick="cerrarSesion()" class="btn-logout">🔴 Cerrar Sesión</button>
     </div>
 
@@ -250,7 +263,28 @@
 
         let nombreResponsable = "";
 
+        // --- NUEVA LÓGICA: Monitor de Estado de Red ---
+        function updateNetworkStatus() {
+            const statusDiv = document.getElementById('networkStatus');
+            const statusText = statusDiv.querySelector('.status-text');
+            
+            if (navigator.onLine) {
+                statusDiv.className = 'network-status online';
+                statusText.innerText = 'Online';
+                statusDiv.title = 'Conectado a Internet - Sincronizado';
+            } else {
+                statusDiv.className = 'network-status offline';
+                statusText.innerText = 'Offline';
+                statusDiv.title = 'Sin Internet - Guardando en caché local';
+            }
+        }
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+        // --- FIN Monitor de Estado de Red ---
+
         window.onload = () => {
+            updateNetworkStatus(); // Inicializar estado de red
+            
             // Verificar si el operador ya ingresó su nombre previamente
             const nombreGuardado = sessionStorage.getItem('operadorGuardado');
             if (nombreGuardado) {
@@ -293,7 +327,6 @@
             document.getElementById('codigoInput').focus();
         };
         
-        // NUEVA FUNCIÓN PARA CERRAR SESIÓN
         window.cerrarSesion = () => {
             if(confirm("¿Deseas cerrar la sesión del operador actual?")) {
                 sessionStorage.removeItem('operadorGuardado');
