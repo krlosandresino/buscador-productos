@@ -116,7 +116,7 @@
         .login-box input {
             width: 100%;
             padding: 15px;
-            margin: 20px 0;
+            margin: 10px 0;
             border: 2px solid #ddd;
             border-radius: 8px;
             font-size: 18px;
@@ -140,46 +140,37 @@
             font-size: 18px;
             cursor: pointer;
             font-weight: bold;
+            margin-top: 15px;
             transition: background-color 0.2s;
         }
         .login-box button:hover {
             background-color: #0056b3;
         }
+        .login-box button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
 
-    <!-- MODAL DE INGRESO DE RESPONSABLE -->
+    <!-- MODAL DE INGRESO DE RESPONSABLE ACTUALIZADO CON PIN -->
     <div id="loginOverlay">
         <div class="login-box">
             <h2>👤 Identificación Requerida</h2>
-            <p style="color: #666; font-size: 14px; margin: 0;">Ingrese su nombre para acceder al sistema</p>
+            <p style="color: #666; font-size: 14px; margin: 0 0 15px 0;">Ingrese su usuario y PIN para acceder</p>
             
-            <!-- Input conectado al datalist -->
             <input type="text" 
                    id="responsableInput" 
-                   list="listaNombres"
-                   placeholder="NOMBRE DEL RESPONSABLE" 
+                   placeholder="Ingrese su nombre..." 
                    autocomplete="off" 
                    oninput="this.value = this.value.toUpperCase()">
                    
-            <!-- Lista de opciones predefinidas -->
-            <datalist id="listaNombres">
-                <option value="CARLOS"></option>
-                <option value="FREDDY"></option>
-                <option value="MIGUEL"></option>
-                <option value="YURI"></option>
-                <option value="MERCEDES"></option>
-                <option value="KEVIN"></option>
-                <option value="JOEL"></option>
-                <option value="EDDY"></option>
-                <option value="CARLA"></option>
-                <option value="SHIRLEY"></option>
-                <option value="MARIA LUISA"></option>
-                <option value="LUISA"></option>
-                <option value="HUGO"></option>
-                <option value="ANTONIO"></option>
-            </datalist>
+            <input type="password" 
+                   id="pinInput" 
+                   placeholder="PIN de acceso..." 
+                   autocomplete="off" 
+                   inputmode="numeric">
 
             <button onclick="ingresarResponsable()" id="loginBtn">Entrar al Sistema</button>
         </div>
@@ -238,7 +229,10 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp, deleteDoc, doc, writeBatch, getDocs, getDoc, where, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        // Importar Realtime Database para validar el login
+        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
+        // APP PRINCIPAL (FIRESTORE - Donde se guardan las lecturas del buscador)
         const firebaseConfig = {
             apiKey: "AIzaSyB_13cedG5q03t9FUgTkaVwiTyD1pzD0F8",
             authDomain: "verproductos-40224.firebaseapp.com",
@@ -247,7 +241,6 @@
             messagingSenderId: "903739745189",
             appId: "1:903739745189:web:b608225acc87550c85be4c"
         };
-
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
@@ -257,13 +250,20 @@
 
         const colRegistros = collection(db, "registros");
         const colUbicaciones = collection(db, "ubicaciones_diarias");
-        
-        // NUEVA REFERENCIA PARA EL DASHBOARD
         const colHistorial = collection(db, "historial_registros");
+
+        // APP SECUNDARIA (REALTIME DB - Para verificar los usuarios creados en usuarios.html)
+        const authConfig = {
+            apiKey: "AIzaSyBxLmlqxw7vNHGiI4mjljUGgZQ5a2VPXuA",
+            databaseURL: "https://inventariopicking-default-rtdb.firebaseio.com",
+            projectId: "inventariopicking"
+        };
+        const authApp = initializeApp(authConfig, "AuthApp");
+        const authDb = getDatabase(authApp);
 
         let nombreResponsable = "";
 
-        // --- NUEVA LÓGICA: Monitor de Estado de Red ---
+        // --- LÓGICA: Monitor de Estado de Red ---
         function updateNetworkStatus() {
             const statusDiv = document.getElementById('networkStatus');
             const statusText = statusDiv.querySelector('.status-text');
@@ -283,9 +283,8 @@
         // --- FIN Monitor de Estado de Red ---
 
         window.onload = () => {
-            updateNetworkStatus(); // Inicializar estado de red
+            updateNetworkStatus(); 
             
-            // Verificar si el operador ya ingresó su nombre previamente
             const nombreGuardado = sessionStorage.getItem('operadorGuardado');
             if (nombreGuardado) {
                 nombreResponsable = nombreGuardado;
@@ -297,34 +296,67 @@
             }
         };
 
-        window.ingresarResponsable = () => {
-            const input = document.getElementById('responsableInput');
-            const valorIngresado = input.value.trim().toUpperCase();
+        // --- NUEVA LÓGICA DE LOGIN CONECTADA A LA BASE DE DATOS DE USUARIOS ---
+        window.ingresarResponsable = async () => {
+            const inputUser = document.getElementById('responsableInput');
+            const inputPin = document.getElementById('pinInput');
+            const valorIngresado = inputUser.value.trim().toUpperCase();
+            const pinIngresado = inputPin.value.trim();
 
-            if(valorIngresado === "") {
-                alert("Por favor, ingrese un nombre para continuar.");
-                input.focus();
+            if(valorIngresado === "" || pinIngresado === "") {
+                alert("Por favor, ingrese un usuario y PIN para continuar.");
+                if (valorIngresado === "") inputUser.focus();
+                else inputPin.focus();
                 return;
             }
 
-            // Validación estricta del operador: Solo permite los nombres de la lista
-            const operadoresValidos = ["CARLOS", "FREDDY", "MIGUEL", "YURI", "MERCEDES", "KEVIN", "JOEL", "EDDY", "CARLA", "SHIRLEY", "MARIA LUISA", "LUISA", "HUGO", "ANTONIO"];
-            
-            if (!operadoresValidos.includes(valorIngresado)) {
-                alert("Nombre no reconocido. Por favor seleccione o escriba un nombre válido de la lista.");
-                input.value = "";
-                input.focus();
-                return;
-            }
+            const btn = document.getElementById('loginBtn');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "Verificando...";
+            btn.disabled = true;
 
-            nombreResponsable = valorIngresado;
-            
-            // Guardar nombre en sesión temporal
-            sessionStorage.setItem('operadorGuardado', nombreResponsable);
-            
-            document.getElementById('loginOverlay').style.display = 'none';
-            document.getElementById('nombreOperador').innerText = ` | Operador: ${nombreResponsable}`;
-            document.getElementById('codigoInput').focus();
+            try {
+                // Consulta el usuario en la base de datos de inventariopicking
+                const userRef = ref(authDb, 'usuarios_auth/' + valorIngresado);
+                const snapshot = await get(userRef);
+                
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    
+                    if (data.pin === pinIngresado) {
+                        // Verifica si tiene acceso otorgado para el Buscador
+                        if (data.accesos && data.accesos.buscador) {
+                            nombreResponsable = valorIngresado;
+                            
+                            // Guarda la sesión temporalmente
+                            sessionStorage.setItem('operadorGuardado', nombreResponsable);
+                            
+                            document.getElementById('loginOverlay').style.display = 'none';
+                            document.getElementById('nombreOperador').innerText = ` | Operador: ${nombreResponsable}`;
+                            document.getElementById('codigoInput').focus();
+                        } else {
+                            alert("Acceso denegado: No tienes permisos para usar el Buscador de Productos.");
+                            inputPin.value = "";
+                            inputPin.focus();
+                        }
+                    } else {
+                        alert("PIN incorrecto.");
+                        inputPin.value = "";
+                        inputPin.focus();
+                    }
+                } else {
+                    alert("Usuario no encontrado.");
+                    inputUser.value = "";
+                    inputPin.value = "";
+                    inputUser.focus();
+                }
+            } catch (error) {
+                console.error("Error al verificar credenciales:", error);
+                alert("Error al conectar con el servidor. Revisa tu conexión a internet.");
+            } finally {
+                btn.innerText = textoOriginal;
+                btn.disabled = false;
+            }
         };
         
         window.cerrarSesion = () => {
@@ -334,7 +366,15 @@
             }
         };
 
+        // Salto con la tecla Enter de Usuario a PIN y de PIN a Iniciar
         document.getElementById('responsableInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { 
+                e.preventDefault(); 
+                document.getElementById('pinInput').focus(); 
+            }
+        });
+        
+        document.getElementById('pinInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { 
                 e.preventDefault(); 
                 window.ingresarResponsable(); 
@@ -401,10 +441,7 @@
                     timestamp: serverTimestamp()
                 };
 
-                // 1. Guarda en la colección temporal de la pantalla (se borra sola)
                 await addDoc(colRegistros, dataAGuardar);
-                
-                // 2. Guarda la COPIA EXACTA en el historial maestro para el Dashboard
                 await addDoc(colHistorial, dataAGuardar);
 
                 reproducirBeep(); 
@@ -414,7 +451,6 @@
             }
         };
 
-        // LÓGICA INTACTA: Solo borra de "registros", NUNCA toca "historial_registros"
         window.limpiarRegistros = async (esAutomatico = false) => {
             if (!esAutomatico && !confirm("¿Borrar todos los registros almacenados?")) return;
             
