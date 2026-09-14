@@ -195,11 +195,10 @@
     </div>
 
     <script type="module">
-        // OPTIMIZACIÓN DE RENDIMIENTO: Actualizado a Firebase 9.15.0 para habilitar la función de conteo sin gasto de lecturas (getCountFromServer)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
         import { getFirestore, collection, onSnapshot, orderBy, query, writeBatch, getDocs, deleteDoc, doc, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
-        // --- LÓGICA DE LOGIN ORIGINAL INTACTA ---
+        // --- LÓGICA DE LOGIN ---
         window.onload = () => {
             const userInput = document.getElementById('userAdmin');
             if(userInput) userInput.focus();
@@ -234,8 +233,6 @@
                 window.verificarLogin();
             }
         });
-        // --- FIN LÓGICA DE LOGIN ---
-
 
         const firebaseConfig = {
             apiKey: "AIzaSyB_13cedG5q03t9FUgTkaVwiTyD1pzD0F8",
@@ -257,22 +254,57 @@
         let ultimoDoc = null;
         let unsubscribe = null;
 
+        // CORRECCIÓN: Esta función ahora respeta los filtros activos y se llamará "en vivo"
         async function actualizarEstadisticas() {
             try {
-                const totalSnap = await getCountFromServer(colHistorial);
+                const searchTxt = document.getElementById('searchInput').value.trim();
+                const respFiltro = document.getElementById('responsableFilter').value;
+                const fechaFiltro = document.getElementById('dateFilter').value; 
+
+                let restriccionesBase = [];
+                
+                if (searchTxt) {
+                    if (searchTxt.toLowerCase() === 'no encontrado') restriccionesBase.push(where("nombre", "==", "No encontrado"));
+                    else restriccionesBase.push(where("codigo", "==", searchTxt));
+                }
+                if (respFiltro) restriccionesBase.push(where("responsable", "==", respFiltro));
+                if (fechaFiltro) {
+                    const start = new Date(fechaFiltro + 'T00:00:00');
+                    const end = new Date(fechaFiltro + 'T23:59:59');
+                    restriccionesBase.push(where("timestamp", ">=", start));
+                    restriccionesBase.push(where("timestamp", "<=", end));
+                }
+
+                // 1. Total basado en los filtros
+                const qTotal = query(colHistorial, ...restriccionesBase);
+                const totalSnap = await getCountFromServer(qTotal);
                 document.getElementById('contadorTotal').innerText = totalSnap.data().count;
 
-                const qNoEnc = query(colHistorial, where("nombre", "==", "No encontrado"));
-                const noEncSnap = await getCountFromServer(qNoEnc);
-                document.getElementById('contadorNoEncontrados').innerText = noEncSnap.data().count;
+                // 2. No encontrados basado en los filtros
+                let countNoEnc = 0;
+                if (searchTxt.toLowerCase() === 'no encontrado') {
+                    countNoEnc = totalSnap.data().count; 
+                } else {
+                    let restNoEnc = [where("nombre", "==", "No encontrado")];
+                    if (respFiltro) restNoEnc.push(where("responsable", "==", respFiltro));
+                    if (fechaFiltro) {
+                        const start = new Date(fechaFiltro + 'T00:00:00');
+                        const end = new Date(fechaFiltro + 'T23:59:59');
+                        restNoEnc.push(where("timestamp", ">=", start));
+                        restNoEnc.push(where("timestamp", "<=", end));
+                    }
+                    const qNoEnc = query(colHistorial, ...restNoEnc);
+                    const noEncSnap = await getCountFromServer(qNoEnc);
+                    countNoEnc = noEncSnap.data().count;
+                }
+                document.getElementById('contadorNoEncontrados').innerText = countNoEnc;
+                
             } catch (error) {
                 console.error("Error al obtener estadísticas:", error);
             }
         }
 
         async function inicializarDashboard() {
-            actualizarEstadisticas();
-
             try {
                 const qResp = query(colHistorial, orderBy("timestamp", "desc"), limit(500));
                 const snapResp = await getDocs(qResp);
@@ -378,6 +410,9 @@
                 }
 
                 renderizarTabla();
+                
+                // CORRECCIÓN: Llamamos a actualizar estadísticas aquí adentro para que sea 100% en tiempo real
+                actualizarEstadisticas();
             }, (error) => {
                 console.error("Alerta de índices en Firebase:", error);
                 document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Error: No se pudo filtrar. (Abre la consola para crear el índice compuesto requerido por Firebase si usas múltiples filtros a la vez).</td></tr>`;
@@ -426,7 +461,6 @@
         window.borrarRegistroIndividual = async (id) => {
             if (confirm("¿Estás seguro de eliminar este registro?")) {
                 await deleteDoc(doc(db, "historial_registros", id));
-                actualizarEstadisticas(); 
             }
         };
 
@@ -440,7 +474,6 @@
             
             await batch.commit();
             alert("Historial del dashboard eliminado correctamente.");
-            actualizarEstadisticas();
         };
 
         window.exportarExcel = async () => {
