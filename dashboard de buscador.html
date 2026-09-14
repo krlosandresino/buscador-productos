@@ -39,6 +39,7 @@
         .btn-limpiar-historial { background-color: #dc3545; }
         .btn-limpiar-historial:hover { background-color: #c82333; }
         .btn-limpiar-historial:active { transform: scale(0.98); }
+        .btn-limpiar-historial:disabled { background-color: #6c757d; cursor: not-allowed; }
 
         .filters-panel {
             background: white; 
@@ -254,7 +255,6 @@
         let ultimoDoc = null;
         let unsubscribe = null;
 
-        // CORRECCIÓN: Esta función ahora respeta los filtros activos y se llamará "en vivo"
         async function actualizarEstadisticas() {
             try {
                 const searchTxt = document.getElementById('searchInput').value.trim();
@@ -275,12 +275,10 @@
                     restriccionesBase.push(where("timestamp", "<=", end));
                 }
 
-                // 1. Total basado en los filtros
                 const qTotal = query(colHistorial, ...restriccionesBase);
                 const totalSnap = await getCountFromServer(qTotal);
                 document.getElementById('contadorTotal').innerText = totalSnap.data().count;
 
-                // 2. No encontrados basado en los filtros
                 let countNoEnc = 0;
                 if (searchTxt.toLowerCase() === 'no encontrado') {
                     countNoEnc = totalSnap.data().count; 
@@ -410,8 +408,6 @@
                 }
 
                 renderizarTabla();
-                
-                // CORRECCIÓN: Llamamos a actualizar estadísticas aquí adentro para que sea 100% en tiempo real
                 actualizarEstadisticas();
             }, (error) => {
                 console.error("Alerta de índices en Firebase:", error);
@@ -458,22 +454,57 @@
             document.getElementById('btnNext').disabled = (datosFiltrados.length < registrosPorPagina);
         }
 
+        // CORRECCIÓN: Borrado individual con delay mínimo para asegurar exactitud
         window.borrarRegistroIndividual = async (id) => {
             if (confirm("¿Estás seguro de eliminar este registro?")) {
                 await deleteDoc(doc(db, "historial_registros", id));
+                // Damos 500ms al servidor para que procese antes de volver a contar
+                setTimeout(() => {
+                    actualizarEstadisticas();
+                }, 500);
             }
         };
 
+        // CORRECCIÓN: Borrado total por lotes (protege la cuota) y fuerza los contadores a 0.
         window.limpiarHistorialCompleto = async () => {
             if (!confirm("⚠️ ADVERTENCIA: ¿Estás seguro de eliminar TODO el historial?")) return;
             
-            const batch = writeBatch(db);
-            const querySnapshot = await getDocs(colHistorial);
-            
-            querySnapshot.forEach((docSnap) => batch.delete(docSnap.ref));
-            
-            await batch.commit();
-            alert("Historial del dashboard eliminado correctamente.");
+            const btn = document.querySelector('.btn-limpiar-historial');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "⏳ Borrando...";
+            btn.disabled = true;
+
+            try {
+                const querySnapshot = await getDocs(colHistorial);
+                const docsArray = querySnapshot.docs;
+                
+                let batch = writeBatch(db);
+                let contadorBatch = 0;
+
+                for (let i = 0; i < docsArray.length; i++) {
+                    batch.delete(docsArray[i].ref);
+                    contadorBatch++;
+                    
+                    if (contadorBatch >= 400) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        contadorBatch = 0;
+                    }
+                }
+                if (contadorBatch > 0) await batch.commit();
+                
+                // Forzamos la actualización visual inmediata a cero
+                document.getElementById('contadorTotal').innerText = '0';
+                document.getElementById('contadorNoEncontrados').innerText = '0';
+                
+                alert("Historial del dashboard eliminado correctamente.");
+            } catch (error) {
+                console.error("Error al borrar:", error);
+                alert("Hubo un error al intentar limpiar el historial.");
+            } finally {
+                btn.innerText = textoOriginal;
+                btn.disabled = false;
+            }
         };
 
         window.exportarExcel = async () => {
