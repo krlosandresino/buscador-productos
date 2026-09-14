@@ -70,8 +70,8 @@
 
         .table-container { 
             overflow-x: auto; 
-            overflow-y: auto; /* Habilita el scroll vertical interno */
-            max-height: 55vh; /* Limita la altura de la tabla para que no empuje el resto de la página */
+            overflow-y: auto; 
+            max-height: 55vh; 
             background: white; 
             border-radius: 10px; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
@@ -82,10 +82,10 @@
         th { 
             background-color: #343a40; 
             color: white; 
-            position: sticky; /* Hace que el título de la columna se quede pegado arriba */
+            position: sticky; 
             top: 0; 
             z-index: 10; 
-            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.2); /* Pequeña sombra para diferenciar al deslizar */
+            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.2); 
         }
         
         .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
@@ -97,7 +97,6 @@
             .filter-input { width: 100%; flex: none; }
         }
 
-        /* --- ESTILOS PARA EL MODAL DE LOGIN DEL DASHBOARD --- */
         #adminLoginOverlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -116,47 +115,14 @@
             width: 90%;
             max-width: 350px;
         }
-        .login-box h2 {
-            margin-top: 0;
-            color: #333;
-            font-size: 22px;
-            margin-bottom: 5px;
-        }
-        .login-box p {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
+        .login-box h2 { margin-top: 0; color: #333; font-size: 22px; margin-bottom: 5px; }
+        .login-box p { color: #666; font-size: 14px; margin-bottom: 20px; }
         .login-box input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            text-align: center;
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.2s;
+            width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; text-align: center; box-sizing: border-box; outline: none; transition: border-color 0.2s;
         }
-        .login-box input:focus {
-            border-color: #007bff;
-        }
-        .login-box button {
-            width: 100%;
-            padding: 15px;
-            background-color: #343a40;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        }
-        .login-box button:hover {
-            background-color: #23272b;
-        }
+        .login-box input:focus { border-color: #007bff; }
+        .login-box button { width: 100%; padding: 15px; background-color: #343a40; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background-color 0.2s; }
+        .login-box button:hover { background-color: #23272b; }
     </style>
 </head>
 <body>
@@ -183,7 +149,6 @@
                     <h3>Total Escaneos Actualmente</h3>
                     <span id="contadorTotal">0</span>
                 </div>
-                <!-- CONTENEDOR: No encontrados (con click) -->
                 <div class="stats-box" style="cursor: pointer; background: #fff3cd; border-color: #ffeeba; transition: transform 0.2s;" onclick="filtrarNoEncontrados()" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'" title="Clic para filtrar únicamente los No Encontrados">
                     <h3>No Encontrados</h3>
                     <span id="contadorNoEncontrados" style="color: #856404;">0</span>
@@ -193,7 +158,7 @@
         </div>
 
         <div class="filters-panel">
-            <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Buscar código, producto o ubicación..." onkeyup="aplicarFiltros()">
+            <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Buscar código exacto (Enter)..." onkeydown="if(event.key === 'Enter') aplicarFiltros()">
             
             <select id="responsableFilter" class="filter-input" onchange="aplicarFiltros()">
                 <option value="">👤 Todos los operadores</option>
@@ -217,25 +182,27 @@
                     </tr>
                 </thead>
                 <tbody id="tablaDashboard">
-                    <tr><td colspan="6" style="text-align: center;">Cargando datos...</td></tr>
+                    <tr><td colspan="6" style="text-align: center;">Esperando inicio de sesión...</td></tr>
                 </tbody>
             </table>
         </div>
 
         <div class="pagination">
-            <button id="btnPrev" onclick="cambiarPagina(-1)" disabled>Anterior</button>
+            <button id="btnPrev" onclick="cargarPagina(-1)" disabled>Anterior</button>
             <span id="pageInfo">Página 1</span>
-            <button id="btnNext" onclick="cambiarPagina(1)" disabled>Siguiente</button>
+            <button id="btnNext" onclick="cargarPagina(1)" disabled>Siguiente</button>
         </div>
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, orderBy, query, writeBatch, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        // OPTIMIZACIÓN DE RENDIMIENTO: Actualizado a Firebase 9.15.0 para habilitar la función de conteo sin gasto de lecturas (getCountFromServer)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, orderBy, query, writeBatch, getDocs, deleteDoc, doc, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
-        // --- LÓGICA DE LOGIN ---
+        // --- LÓGICA DE LOGIN ORIGINAL INTACTA ---
         window.onload = () => {
-            document.getElementById('userAdmin').focus();
+            const userInput = document.getElementById('userAdmin');
+            if(userInput) userInput.focus();
         };
 
         window.verificarLogin = () => {
@@ -245,6 +212,8 @@
             if (user === "oriflame" && pass === "2026") {
                 document.getElementById('adminLoginOverlay').style.display = "none";
                 document.getElementById('mainDashboard').style.display = "block";
+                
+                inicializarDashboard();
             } else {
                 alert("❌ Usuario o contraseña incorrectos.");
                 document.getElementById('passAdmin').value = '';
@@ -281,33 +250,48 @@
         const db = getFirestore(app);
         const colHistorial = collection(db, "historial_registros");
 
-        let datosGlobales = [];
         let datosFiltrados = [];
         let paginaActual = 1;
         const registrosPorPagina = 50;
+        let primerDoc = null;
+        let ultimoDoc = null;
+        let unsubscribe = null;
 
-        onSnapshot(query(colHistorial, orderBy("timestamp", "desc")), (snap) => {
-            datosGlobales = [];
-            let responsablesUnicos = new Set();
+        async function actualizarEstadisticas() {
+            try {
+                const totalSnap = await getCountFromServer(colHistorial);
+                document.getElementById('contadorTotal').innerText = totalSnap.data().count;
 
-            snap.docs.forEach(d => {
-                const data = d.data();
-                data.id = d.id; 
-                datosGlobales.push(data);
-                
-                if (data.responsable) {
-                    responsablesUnicos.add(data.responsable);
-                }
-            });
+                const qNoEnc = query(colHistorial, where("nombre", "==", "No encontrado"));
+                const noEncSnap = await getCountFromServer(qNoEnc);
+                document.getElementById('contadorNoEncontrados').innerText = noEncSnap.data().count;
+            } catch (error) {
+                console.error("Error al obtener estadísticas:", error);
+            }
+        }
 
-            actualizarDropdownResponsables(responsablesUnicos);
-            aplicarFiltros(); 
-        });
+        async function inicializarDashboard() {
+            actualizarEstadisticas();
+
+            try {
+                const qResp = query(colHistorial, orderBy("timestamp", "desc"), limit(500));
+                const snapResp = await getDocs(qResp);
+                let responsablesUnicos = new Set();
+                snapResp.docs.forEach(d => {
+                    const val = d.data();
+                    if (val.responsable) responsablesUnicos.add(val.responsable);
+                });
+                actualizarDropdownResponsables(responsablesUnicos);
+            } catch (e) {
+                console.log("Error cargando responsables", e);
+            }
+
+            cargarPagina(0); 
+        }
 
         function actualizarDropdownResponsables(setResponsables) {
             const select = document.getElementById('responsableFilter');
             const valorActual = select.value;
-            
             select.innerHTML = '<option value="">👤 Todos los operadores</option>';
             setResponsables.forEach(resp => {
                 const option = document.createElement('option');
@@ -315,45 +299,11 @@
                 option.textContent = resp;
                 select.appendChild(option);
             });
-            
             select.value = valorActual; 
         }
 
         window.aplicarFiltros = () => {
-            const searchTxt = document.getElementById('searchInput').value.toLowerCase();
-            const respFiltro = document.getElementById('responsableFilter').value;
-            const fechaFiltro = document.getElementById('dateFilter').value; 
-
-            datosFiltrados = datosGlobales.filter(item => {
-                let coincideTexto = item.codigo.toLowerCase().includes(searchTxt) || 
-                                    (item.nombre && item.nombre.toLowerCase().includes(searchTxt)) || 
-                                    (item.ubicacion && item.ubicacion.toLowerCase().includes(searchTxt));
-                
-                let coincideResp = (respFiltro === "") || (item.responsable === respFiltro);
-                
-                let coincideFecha = true;
-                if (fechaFiltro && item.timestamp) {
-                    const fechaItem = item.timestamp.toDate();
-                    const year = fechaItem.getFullYear();
-                    const month = String(fechaItem.getMonth() + 1).padStart(2, '0');
-                    const day = String(fechaItem.getDate()).padStart(2, '0');
-                    const fechaFormateada = `${year}-${month}-${day}`;
-                    coincideFecha = (fechaFormateada === fechaFiltro);
-                }
-
-                return coincideTexto && coincideResp && coincideFecha;
-            });
-
-            document.getElementById('contadorTotal').innerText = datosFiltrados.length;
-
-            const cantidadNoEncontrados = datosFiltrados.filter(item => 
-                (item.nombre && item.nombre.toLowerCase().includes('no encontrado')) || 
-                (item.ubicacion && item.ubicacion.toLowerCase().includes('no encontrado'))
-            ).length;
-            document.getElementById('contadorNoEncontrados').innerText = cantidadNoEncontrados;
-
-            paginaActual = 1; 
-            renderizarTabla();
+            cargarPagina(0);
         };
 
         window.filtrarNoEncontrados = () => {
@@ -366,23 +316,87 @@
             aplicarFiltros();
         };
 
+        window.cargarPagina = (direccion) => {
+            const searchTxt = document.getElementById('searchInput').value.trim();
+            const respFiltro = document.getElementById('responsableFilter').value;
+            const fechaFiltro = document.getElementById('dateFilter').value; 
+
+            let restricciones = [];
+
+            if (searchTxt) {
+                if (searchTxt.toLowerCase() === 'no encontrado') {
+                    restricciones.push(where("nombre", "==", "No encontrado"));
+                } else {
+                    restricciones.push(where("codigo", "==", searchTxt));
+                }
+            }
+
+            if (respFiltro) restricciones.push(where("responsable", "==", respFiltro));
+            
+            if (fechaFiltro) {
+                const start = new Date(fechaFiltro + 'T00:00:00');
+                const end = new Date(fechaFiltro + 'T23:59:59');
+                restricciones.push(where("timestamp", ">=", start));
+                restricciones.push(where("timestamp", "<=", end));
+            }
+
+            restricciones.push(orderBy("timestamp", "desc"));
+
+            if (direccion === 1 && ultimoDoc) {
+                restricciones.push(startAfter(ultimoDoc));
+                restricciones.push(limit(registrosPorPagina));
+                paginaActual++;
+            } else if (direccion === -1 && primerDoc) {
+                restricciones.push(endBefore(primerDoc));
+                restricciones.push(limitToLast(registrosPorPagina));
+                paginaActual--;
+            } else {
+                restricciones.push(limit(registrosPorPagina));
+                paginaActual = 1;
+            }
+
+            const q = query(colHistorial, ...restricciones);
+
+            if (unsubscribe) unsubscribe();
+
+            document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center;">Cargando registros...</td></tr>`;
+
+            unsubscribe = onSnapshot(q, (snap) => {
+                datosFiltrados = [];
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    data.id = d.id; 
+                    datosFiltrados.push(data);
+                });
+
+                if (snap.docs.length > 0) {
+                    primerDoc = snap.docs[0];
+                    ultimoDoc = snap.docs[snap.docs.length - 1];
+                } else {
+                    primerDoc = null;
+                    ultimoDoc = null;
+                }
+
+                renderizarTabla();
+            }, (error) => {
+                console.error("Alerta de índices en Firebase:", error);
+                document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Error: No se pudo filtrar. (Abre la consola para crear el índice compuesto requerido por Firebase si usas múltiples filtros a la vez).</td></tr>`;
+            });
+        };
+
         function renderizarTabla() {
             const tabla = document.getElementById('tablaDashboard');
             let contenidoHTML = "";
-            
-            const inicio = (paginaActual - 1) * registrosPorPagina;
-            const fin = inicio + registrosPorPagina;
-            const registrosPagina = datosFiltrados.slice(inicio, fin);
 
-            if (registrosPagina.length === 0) {
+            if (datosFiltrados.length === 0) {
                 tabla.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #666;">No se encontraron registros.</td></tr>`;
-                document.getElementById('pageInfo').innerText = `Página 0 de 0`;
+                document.getElementById('pageInfo').innerText = `Página ${paginaActual}`;
                 document.getElementById('btnPrev').disabled = true;
                 document.getElementById('btnNext').disabled = true;
                 return;
             }
 
-            registrosPagina.forEach(data => {
+            datosFiltrados.forEach(data => {
                 const nombreCorto = (data.nombre && data.nombre.length > 25) ? data.nombre.substring(0, 25) + "..." : (data.nombre || "");
                 
                 let fechaHora = "...";
@@ -404,20 +418,15 @@
             
             tabla.innerHTML = contenidoHTML;
 
-            const totalPaginas = Math.ceil(datosFiltrados.length / registrosPorPagina);
-            document.getElementById('pageInfo').innerText = `Página ${paginaActual} de ${totalPaginas}`;
-            document.getElementById('btnPrev').disabled = paginaActual === 1;
-            document.getElementById('btnNext').disabled = paginaActual === totalPaginas;
+            document.getElementById('pageInfo').innerText = `Página ${paginaActual}`;
+            document.getElementById('btnPrev').disabled = (paginaActual === 1);
+            document.getElementById('btnNext').disabled = (datosFiltrados.length < registrosPorPagina);
         }
-
-        window.cambiarPagina = (direccion) => {
-            paginaActual += direccion;
-            renderizarTabla();
-        };
 
         window.borrarRegistroIndividual = async (id) => {
             if (confirm("¿Estás seguro de eliminar este registro?")) {
                 await deleteDoc(doc(db, "historial_registros", id));
+                actualizarEstadisticas(); 
             }
         };
 
@@ -431,35 +440,77 @@
             
             await batch.commit();
             alert("Historial del dashboard eliminado correctamente.");
+            actualizarEstadisticas();
         };
 
-        window.exportarExcel = () => {
-            if (datosFiltrados.length === 0) {
-                alert("No hay datos para exportar.");
-                return;
-            }
-            
-            const dataParaExcel = datosFiltrados.map(d => {
-                let fechaHora = "";
-                if (d.timestamp) {
-                    const dateObj = d.timestamp.toDate();
-                    fechaHora = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
-                }
-                return {
-                    "Responsable": d.responsable || "DESCONOCIDO",
-                    "Producto": d.nombre || "",
-                    "Código": d.codigo,
-                    "Ubicación": d.ubicacion || "",
-                    "Fecha y Hora": fechaHora
-                };
-            });
+        window.exportarExcel = async () => {
+            const btn = document.querySelector('.btn-exportar');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "⏳ Generando Excel...";
+            btn.disabled = true;
 
-            const worksheet = XLSX.utils.json_to_sheet(dataParaExcel);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Historial_Filtrado");
-            
-            const hoy = new Date().toISOString().split('T')[0];
-            XLSX.writeFile(workbook, `Reporte_Dashboard_${hoy}.xlsx`);
+            try {
+                const searchTxt = document.getElementById('searchInput').value.trim();
+                const respFiltro = document.getElementById('responsableFilter').value;
+                const fechaFiltro = document.getElementById('dateFilter').value;
+
+                let restricciones = [];
+
+                if (searchTxt) {
+                    if (searchTxt.toLowerCase() === 'no encontrado') restricciones.push(where("nombre", "==", "No encontrado"));
+                    else restricciones.push(where("codigo", "==", searchTxt));
+                }
+                if (respFiltro) restricciones.push(where("responsable", "==", respFiltro));
+                if (fechaFiltro) {
+                    const start = new Date(fechaFiltro + 'T00:00:00');
+                    const end = new Date(fechaFiltro + 'T23:59:59');
+                    restricciones.push(where("timestamp", ">=", start));
+                    restricciones.push(where("timestamp", "<=", end));
+                }
+                
+                restricciones.push(orderBy("timestamp", "desc"));
+                restricciones.push(limit(5000)); 
+
+                const qExcel = query(colHistorial, ...restricciones);
+                const snapExcel = await getDocs(qExcel);
+
+                if (snapExcel.empty) {
+                    alert("No hay datos para exportar con los filtros actuales.");
+                    btn.innerText = textoOriginal;
+                    btn.disabled = false;
+                    return;
+                }
+                
+                const dataParaExcel = snapExcel.docs.map(d => {
+                    const val = d.data();
+                    let fechaHora = "";
+                    if (val.timestamp) {
+                        const dateObj = val.timestamp.toDate();
+                        fechaHora = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
+                    }
+                    return {
+                        "Responsable": val.responsable || "DESCONOCIDO",
+                        "Producto": val.nombre || "",
+                        "Código": val.codigo,
+                        "Ubicación": val.ubicacion || "",
+                        "Fecha y Hora": fechaHora
+                    };
+                });
+
+                const worksheet = XLSX.utils.json_to_sheet(dataParaExcel);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Historial_Filtrado");
+                
+                const hoy = new Date().toISOString().split('T')[0];
+                XLSX.writeFile(workbook, `Reporte_Dashboard_${hoy}.xlsx`);
+
+            } catch (error) {
+                console.error("Error al exportar:", error);
+                alert("Hubo un error generando el Excel.");
+            } finally {
+                btn.innerText = textoOriginal;
+                btn.disabled = false;
+            }
         };
     </script>
 </body>
