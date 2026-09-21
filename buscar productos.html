@@ -191,7 +191,7 @@
         <summary>⚙️ Panel de Actualización de Ubicaciones</summary>
         <div class="admin-content">
             <h3>Cargar Base de Datos de Ubicaciones</h3>
-            <p style="font-size: 13px; margin-bottom: 10px;">⚠️ Al subir, se reemplazará la base actual.</p>
+            <p style="font-size: 13px; margin-bottom: 10px;">⚠️ Al subir, se reemplazarán y actualizarán solo los códigos con cambios.</p>
             <input type="file" id="excelInput" accept=".xlsx, .xls" style="max-width: 100%;">
             <br>
             <button class="btn-admin" onclick="procesarYSubirExcel()">☁️ Cargar y Actualizar Todo</button>
@@ -366,7 +366,6 @@
             }
         };
 
-        // Salto con la tecla Enter de Usuario a PIN y de PIN a Iniciar
         document.getElementById('responsableInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { 
                 e.preventDefault(); 
@@ -468,7 +467,7 @@
             }
             
             await batch.commit();
-            if (esAutomatico) console.log("Revisión en segundo plano: Registros antiguos eliminados (Costo de lectura optimizado).");
+            if (esAutomatico) console.log("Revisión en segundo plano: Registros antiguos eliminados.");
         };
 
         document.getElementById('codigoInput').addEventListener('keydown', (e) => {
@@ -499,54 +498,63 @@
 
         window.borrarDato = async (id) => { if(confirm("¿Eliminar código?")) await deleteDoc(doc(db, "registros", id)); };
 
+        // NUEVA LÓGICA DE ACTUALIZACIÓN DELTA
         window.procesarYSubirExcel = async () => {
             const fileInput = document.getElementById('excelInput');
             const progreso = document.getElementById('progresoCarga');
             
             if(!fileInput.files[0]) return alert("Selecciona un archivo.");
             
-            progreso.innerText = "⏳ Leyendo Excel...";
-            
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, {type: 'array'});
-                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+            try {
+                progreso.innerText = "⏳ Consultando base actual en la nube...";
 
-                    progreso.innerText = "🗑️ Eliminando base anterior...";
-                    const oldDocs = await getDocs(colUbicaciones);
-                    const docsArray = oldDocs.docs;
-                    
-                    let batch = writeBatch(db);
-                    let contadorBatch = 0;
+                const querySnapshot = await getDocs(colUbicaciones);
+                const datosActuales = {};
+                querySnapshot.forEach(docSnap => {
+                    datosActuales[docSnap.id] = docSnap.data();
+                });
 
-                    for (let i = 0; i < docsArray.length; i++) {
-                        batch.delete(docsArray[i].ref);
-                        contadorBatch++;
-                        
-                        if (contadorBatch >= 400) {
-                            await batch.commit();
-                            batch = writeBatch(db);
-                            contadorBatch = 0;
-                            progreso.innerText = `🗑️ Borrando... (${i} eliminados)`;
+                progreso.innerText = "⏳ Leyendo Excel...";
+                
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+                        let operacionesBatch = [];
+
+                        jsonData.forEach(f => {
+                            const c = String(f.Codigo || f["Código Producto"] || f.codigo || "").trim();
+                            const n = String(f.Nombre || f["Descripción"] || f.Producto || f.nombre || "Sin nombre").trim();
+                            const u = String(f.Ubicacion || f.Caja || f.ubicacion || "No encontrado").trim();
+
+                            if (c) {
+                                const actual = datosActuales[c];
+                                if (!actual || actual.nombre !== n || actual.ubicacion !== u) {
+                                    operacionesBatch.push({
+                                        codigo: c,
+                                        data: { nombre: n, ubicacion: u }
+                                    });
+                                }
+                            }
+                        });
+
+                        if (operacionesBatch.length === 0) {
+                            progreso.innerText = "✅ ¡Todo está al día! Ningún código cambió.";
+                            progreso.style.color = "green";
+                            return;
                         }
-                    }
-                    if (contadorBatch > 0) await batch.commit();
 
-                    progreso.innerText = "☁️ Preparando subida...";
-                    batch = writeBatch(db);
-                    contadorBatch = 0;
-                    let totalProcesados = 0;
+                        progreso.innerText = `⏳ Subiendo ${operacionesBatch.length} actualizaciones...`;
+                        
+                        let batch = writeBatch(db);
+                        let contadorBatch = 0;
+                        let totalProcesados = 0;
 
-                    for (const f of jsonData) {
-                        const c = String(f.Codigo || f["Código Producto"] || f.codigo || "").trim();
-                        if(c) {
-                            batch.set(doc(db, "ubicaciones_diarias", c), {
-                                nombre: String(f.Nombre || f["Descripción"] || f.Producto || f.nombre || "Sin nombre"),
-                                ubicacion: String(f.Ubicacion || f.Caja || f.ubicacion || "No encontrado")
-                            });
-                            
+                        for (const op of operacionesBatch) {
+                            batch.set(doc(colUbicaciones, op.codigo), op.data, { merge: true });
                             contadorBatch++;
                             totalProcesados++;
 
@@ -554,25 +562,27 @@
                                 await batch.commit();
                                 batch = writeBatch(db);
                                 contadorBatch = 0;
-                                progreso.innerText = `☁️ Subiendo: ${totalProcesados} / ${jsonData.length}`;
+                                progreso.innerText = `☁️ Subiendo: ${totalProcesados} / ${operacionesBatch.length}`;
                             }
                         }
+                        if (contadorBatch > 0) await batch.commit();
+
+                        progreso.innerText = "✅ ¡Carga Completa!";
+                        progreso.style.color = "green";
+                        alert(`Éxito: Se actualizaron ${totalProcesados} productos.`);
+                        location.reload();
+
+                    } catch (error) {
+                        console.error(error);
+                        progreso.innerText = "❌ Error: " + error.message;
+                        progreso.style.color = "red";
+                        alert("Error: " + error.message);
                     }
-                    if (contadorBatch > 0) await batch.commit();
-
-                    progreso.innerText = "✅ ¡Carga Completa!";
-                    progreso.style.color = "green";
-                    alert(`Éxito: Se cargaron ${totalProcesados} productos.`);
-                    location.reload();
-
-                } catch (error) {
-                    console.error(error);
-                    progreso.innerText = "❌ Error: " + error.message;
-                    progreso.style.color = "red";
-                    alert("Error: " + error.message);
-                }
-            };
-            reader.readAsArrayBuffer(fileInput.files[0]);
+                };
+                reader.readAsArrayBuffer(fileInput.files[0]);
+            } catch (err) {
+                progreso.innerText = "❌ Error de conexión: " + err.message;
+            }
         };
 
         setInterval(() => {
