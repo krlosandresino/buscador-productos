@@ -229,8 +229,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp, deleteDoc, doc, writeBatch, getDocs, getDoc, where, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
-        // Importar Realtime Database para validar el login
-        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+        // Añadido set, remove, onDisconnect para dbAuth
+        import { getDatabase, ref, get, set, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
         // APP PRINCIPAL (FIRESTORE - Donde se guardan las lecturas del buscador)
         const firebaseConfig = {
@@ -282,12 +282,23 @@
         window.addEventListener('offline', updateNetworkStatus);
         // --- FIN Monitor de Estado de Red ---
 
+        // Función para registrar la sesión activa
+        window.registrarUsuarioActivo = (nombre) => {
+            const refActivo = ref(authDb, 'usuarios_activos/' + nombre);
+            set(refActivo, true);
+            onDisconnect(refActivo).remove();
+        };
+
         window.onload = () => {
             updateNetworkStatus(); 
             
             const nombreGuardado = sessionStorage.getItem('operadorGuardado');
             if (nombreGuardado) {
                 nombreResponsable = nombreGuardado;
+                
+                // Reconectar en usuarios activos si entró automáticamente
+                window.registrarUsuarioActivo(nombreResponsable);
+                
                 document.getElementById('loginOverlay').style.display = 'none';
                 document.getElementById('nombreOperador').innerText = ` | Operador: ${nombreResponsable}`;
                 document.getElementById('codigoInput').focus();
@@ -331,6 +342,9 @@
                             // Guarda la sesión temporalmente
                             sessionStorage.setItem('operadorGuardado', nombreResponsable);
                             
+                            // REGISTRAR USUARIO ACTIVO Y CONFIGURAR DESCONEXIÓN
+                            window.registrarUsuarioActivo(nombreResponsable);
+                            
                             document.getElementById('loginOverlay').style.display = 'none';
                             document.getElementById('nombreOperador').innerText = ` | Operador: ${nombreResponsable}`;
                             document.getElementById('codigoInput').focus();
@@ -361,8 +375,16 @@
         
         window.cerrarSesion = () => {
             if(confirm("¿Deseas cerrar la sesión del operador actual?")) {
-                sessionStorage.removeItem('operadorGuardado');
-                location.reload();
+                if (nombreResponsable) {
+                    // Borramos al usuario activo antes de recargar la página
+                    remove(ref(authDb, 'usuarios_activos/' + nombreResponsable)).then(() => {
+                        sessionStorage.removeItem('operadorGuardado');
+                        location.reload();
+                    });
+                } else {
+                    sessionStorage.removeItem('operadorGuardado');
+                    location.reload();
+                }
             }
         };
 
