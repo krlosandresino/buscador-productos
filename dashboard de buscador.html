@@ -36,10 +36,20 @@
         .stats-box span { font-size: 24px; font-weight: bold; color: #007bff; }
 
         button { padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; white-space: nowrap; }
+        
+        /* Contenedor de botones de borrado */
+        .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        
+        /* Estilos de botones de limpieza */
         .btn-limpiar-historial { background-color: #dc3545; }
         .btn-limpiar-historial:hover { background-color: #c82333; }
         .btn-limpiar-historial:active { transform: scale(0.98); }
         .btn-limpiar-historial:disabled { background-color: #6c757d; cursor: not-allowed; }
+
+        .btn-limpiar-no-encontrados { background-color: #fd7e14; }
+        .btn-limpiar-no-encontrados:hover { background-color: #e86e10; }
+        .btn-limpiar-no-encontrados:active { transform: scale(0.98); }
+        .btn-limpiar-no-encontrados:disabled { background-color: #6c757d; cursor: not-allowed; }
 
         .filters-panel {
             background: white; 
@@ -60,6 +70,41 @@
             flex: 1;
             min-width: 150px;
         }
+        
+        /* Contenedor del filtro de fecha y estilo del nuevo botón borrador */
+        .date-filter-container {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            min-width: 180px;
+            gap: 5px;
+        }
+        .date-filter-container .filter-input {
+            flex: 1;
+            min-width: 0;
+        }
+        .btn-clear-date {
+            background-color: #6c757d;
+            border: none;
+            color: white;
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        .btn-clear-date:hover {
+            background-color: #5a6268;
+        }
+        .btn-clear-date svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
         .btn-exportar { background-color: #28a745; }
         .btn-exportar:hover { background-color: #218838; }
         .btn-borrar-individual { background-color: #dc3545; padding: 6px 12px; font-size: 12px; }
@@ -94,8 +139,10 @@
 
         @media (max-width: 768px) {
             .header-panel { flex-direction: column; text-align: center; }
-            .btn-limpiar-historial, .btn-exportar { width: 100%; }
+            .header-actions { width: 100%; flex-direction: column; }
+            .btn-limpiar-historial, .btn-limpiar-no-encontrados, .btn-exportar { width: 100%; }
             .filter-input { width: 100%; flex: none; }
+            .date-filter-container { width: 100%; flex: none; }
         }
 
         #adminLoginOverlay {
@@ -155,7 +202,10 @@
                     <span id="contadorNoEncontrados" style="color: #856404;">0</span>
                 </div>
             </div>
-            <button class="btn-limpiar-historial" onclick="limpiarHistorialCompleto()">🗑️ Borrar Registros</button>
+            <div class="header-actions">
+                <button class="btn-limpiar-no-encontrados" onclick="limpiarNoEncontrados()">⚠️ Borrar "No Encontrados"</button>
+                <button class="btn-limpiar-historial" onclick="limpiarHistorialCompleto()">🗑️ Borrar base de datos</button>
+            </div>
         </div>
 
         <div class="filters-panel">
@@ -165,7 +215,16 @@
                 <option value="">👤 Todos los operadores</option>
             </select>
             
-            <input type="date" id="dateFilter" class="filter-input" onchange="aplicarFiltros()" title="Filtrar por fecha">
+            <!-- Contenedor con botón de icono borrador -->
+            <div class="date-filter-container">
+                <input type="date" id="dateFilter" class="filter-input" onchange="aplicarFiltros()" title="Filtrar por fecha">
+                <button type="button" class="btn-clear-date" onclick="limpiarFiltroFecha()" title="Borrar filtro de fecha para ver todos los días">
+                    <!-- Icono SVG de Borrador -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+                        <path d="M8.086 2.207a2 2 0 0 1 2.828 0l3.879 3.879a2 2 0 0 1 0 2.828l-5.5 5.5A2 2 0 0 1 7.879 15H5.12a2 2 0 0 1-1.414-.586l-2.5-2.5a2 2 0 0 1 0-2.828l6.879-6.879zm2.121.707a1 1 0 0 0-1.414 0L4.16 7.547l5.293 5.293 4.633-4.633a1 1 0 0 0 0-1.414l-3.879-3.879zM8.746 13.547 3.453 8.254 1.914 9.793a1 1 0 0 0 0 1.414l2.5 2.5a1 1 0 0 0 .707.293H7.88a1 1 0 0 0 .707-.293l.16-.16z"/>
+                    </svg>
+                </button>
+            </div>
             
             <button class="btn-exportar" onclick="exportarExcel()">📥 Descargar Excel</button>
         </div>
@@ -303,6 +362,13 @@
         }
 
         async function inicializarDashboard() {
+            // Asigna automáticamente la fecha actual al filtro antes de cargar los datos
+            const hoy = new Date();
+            const yyyy = hoy.getFullYear();
+            const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+            const dd = String(hoy.getDate()).padStart(2, '0');
+            document.getElementById('dateFilter').value = `${yyyy}-${mm}-${dd}`;
+
             try {
                 const qResp = query(colHistorial, orderBy("timestamp", "desc"), limit(500));
                 const snapResp = await getDocs(qResp);
@@ -331,6 +397,12 @@
             });
             select.value = valorActual; 
         }
+
+        // Función para borrar la fecha y recargar los datos de todos los días
+        window.limpiarFiltroFecha = () => {
+            document.getElementById('dateFilter').value = '';
+            aplicarFiltros();
+        };
 
         window.aplicarFiltros = () => {
             cargarPagina(0);
@@ -462,6 +534,58 @@
                 setTimeout(() => {
                     actualizarEstadisticas();
                 }, 500);
+            }
+        };
+
+        // NUEVA FUNCIÓN: Borrado total únicamente de los "No encontrados"
+        window.limpiarNoEncontrados = async () => {
+            if (!confirm("⚠️ ADVERTENCIA: ¿Estás seguro de eliminar TODOS los registros 'No encontrados' de la base de datos?")) return;
+            
+            const btn = document.querySelector('.btn-limpiar-no-encontrados');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "⏳ Borrando...";
+            btn.disabled = true;
+
+            try {
+                // Consultamos únicamente los documentos que tienen nombre "No encontrado"
+                const qNoEnc = query(colHistorial, where("nombre", "==", "No encontrado"));
+                const querySnapshot = await getDocs(qNoEnc);
+                const docsArray = querySnapshot.docs;
+                
+                if (docsArray.length === 0) {
+                    alert("No hay registros 'No encontrados' para eliminar.");
+                    btn.innerText = textoOriginal;
+                    btn.disabled = false;
+                    return;
+                }
+                
+                let batch = writeBatch(db);
+                let contadorBatch = 0;
+
+                for (let i = 0; i < docsArray.length; i++) {
+                    batch.delete(docsArray[i].ref);
+                    contadorBatch++;
+                    
+                    if (contadorBatch >= 400) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        contadorBatch = 0;
+                    }
+                }
+                if (contadorBatch > 0) await batch.commit();
+                
+                // Actualizamos las estadísticas para reflejar la eliminación
+                setTimeout(() => {
+                    actualizarEstadisticas();
+                }, 500);
+                
+                alert(`Se eliminaron ${docsArray.length} registros 'No encontrados' correctamente.`);
+            } catch (error) {
+                console.error("Error al borrar no encontrados:", error);
+                alert("Hubo un error al intentar limpiar los registros.");
+            } finally {
+                btn.innerText = textoOriginal;
+                btn.disabled = false;
             }
         };
 
