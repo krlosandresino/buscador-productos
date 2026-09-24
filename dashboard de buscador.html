@@ -71,7 +71,7 @@
             min-width: 150px;
         }
         
-        /* Contenedor del filtro de fecha y estilo del nuevo botón borrador */
+        /* Contenedor del filtro de fecha y estilo del botón borrador */
         .date-filter-container {
             display: flex;
             align-items: center;
@@ -133,6 +133,11 @@
             z-index: 10; 
             box-shadow: 0 2px 2px -1px rgba(0,0,0,0.2); 
         }
+
+        /* Clase para resaltar visualmente los No Encontrados */
+        .fila-alerta { background-color: #fff0f0; }
+        .fila-alerta td { border-bottom: 1px solid #ffcccc; }
+        .fila-alerta:hover { background-color: #ffe5e5; }
         
         .ubicacion-tag { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #ffeeba; }
         .responsable-tag { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; border: 1px solid #c3e6cb; }
@@ -203,13 +208,14 @@
                 </div>
             </div>
             <div class="header-actions">
-                <button class="btn-limpiar-no-encontrados" onclick="limpiarNoEncontrados()">⚠️ Borrar "No Encontrados"</button>
-                <button class="btn-limpiar-historial" onclick="limpiarHistorialCompleto()">🗑️ Borrar base de datos</button>
+                <button class="btn-limpiar-no-encontrados" onclick="limpiarNoEncontrados()">⚠️ Borrar No Encontrados</button>
+                <button class="btn-limpiar-historial" onclick="limpiarHistorialCompleto()">🗑️ Borrar Registros</button>
             </div>
         </div>
 
         <div class="filters-panel">
-            <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Buscar código exacto (Enter)..." onkeydown="if(event.key === 'Enter') aplicarFiltros()">
+            <!-- OPTIMIZACIÓN 2: oninput con Debounce en lugar de onkeydown Enter -->
+            <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Buscar código" oninput="buscarConDebounce()">
             
             <select id="responsableFilter" class="filter-input" onchange="aplicarFiltros()">
                 <option value="">👤 Todos los operadores</option>
@@ -255,8 +261,57 @@
     </div>
 
     <script type="module">
+        // Se agregaron getDoc y setDoc para la optimización de lecturas
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, orderBy, query, writeBatch, getDocs, deleteDoc, doc, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, orderBy, query, writeBatch, getDocs, deleteDoc, doc, getDoc, setDoc, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        // --- OPTIMIZACIÓN 5: CONFIGURACIÓN INDEXEDDB (Caché Local) ---
+        const DB_NAME = "DashboardCacheDB";
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    e.target.result.createObjectStore("registros", { keyPath: "id" });
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+        async function guardarEnCache(datos) {
+            try {
+                const dbIDB = await initDB();
+                const tx = dbIDB.transaction("registros", "readwrite");
+                const store = tx.objectStore("registros");
+                store.clear();
+                datos.forEach(item => {
+                    let cacheItem = { ...item };
+                    if (cacheItem.timestamp && typeof cacheItem.timestamp.toDate === 'function') {
+                        cacheItem.timestampMs = cacheItem.timestamp.toDate().getTime();
+                        delete cacheItem.timestamp; 
+                    }
+                    store.put(cacheItem);
+                });
+            } catch (e) { console.log("Error caché:", e); }
+        }
+        async function cargarDeCache() {
+            try {
+                const dbIDB = await initDB();
+                return new Promise((resolve) => {
+                    const tx = dbIDB.transaction("registros", "readonly");
+                    const store = tx.objectStore("registros");
+                    const req = store.getAll();
+                    req.onsuccess = () => {
+                        let datos = req.result.map(d => {
+                            if (d.timestampMs) d.timestamp = { toDate: () => new Date(d.timestampMs) };
+                            return d;
+                        });
+                        datos.sort((a,b) => b.timestampMs - a.timestampMs);
+                        resolve(datos);
+                    };
+                    req.onerror = () => resolve([]);
+                });
+            } catch (e) { return []; }
+        }
 
         // --- LÓGICA DE LOGIN ---
         window.onload = () => {
@@ -313,6 +368,46 @@
         let primerDoc = null;
         let ultimoDoc = null;
         let unsubscribe = null;
+        
+        // Variables globales para optimización
+        let operadoresGuardados = new Set();
+        let totalDocsParaPaginacion = 0; // Para paginación matemática
+
+        // --- OPTIMIZACIÓN 1: Lectura eficiente de Operadores ---
+        async function cargarOperadoresConfig() {
+            try {
+                const docRef = doc(db, "configuracion", "operadores");
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists() && docSnap.data().lista) {
+                    operadoresGuardados = new Set(docSnap.data().lista);
+                    actualizarDropdownResponsables(operadoresGuardados);
+                }
+            } catch(e) { console.log("Info: Documento de configuración no encontrado, se creará dinámicamente."); }
+        }
+
+        async function agregarOperadorGlobal(nombre) {
+            if (!nombre || operadoresGuardados.has(nombre)) return;
+            operadoresGuardados.add(nombre);
+            actualizarDropdownResponsables(operadoresGuardados);
+            try {
+                // Guarda en segundo plano el nuevo operador para no leer 500 registros la próxima vez
+                await setDoc(doc(db, "configuracion", "operadores"), { lista: Array.from(operadoresGuardados) }, { merge: true });
+            } catch(e) {}
+        }
+
+        // --- OPTIMIZACIÓN 3: Matemáticas de Paginación ---
+        function actualizarTextoPaginacion() {
+            if(totalDocsParaPaginacion === 0) {
+                document.getElementById('pageInfo').innerText = `Página 1 de 1`;
+                document.getElementById('btnPrev').disabled = true;
+                document.getElementById('btnNext').disabled = true;
+                return;
+            }
+            const totalPaginas = Math.ceil(totalDocsParaPaginacion / registrosPorPagina) || 1;
+            document.getElementById('pageInfo').innerText = `Página ${paginaActual} de ${totalPaginas}`;
+            document.getElementById('btnPrev').disabled = (paginaActual <= 1);
+            document.getElementById('btnNext').disabled = (paginaActual >= totalPaginas);
+        }
 
         async function actualizarEstadisticas() {
             try {
@@ -336,11 +431,15 @@
 
                 const qTotal = query(colHistorial, ...restriccionesBase);
                 const totalSnap = await getCountFromServer(qTotal);
-                document.getElementById('contadorTotal').innerText = totalSnap.data().count;
+                
+                // Actualiza contadores visuales y variables globales de paginación
+                totalDocsParaPaginacion = totalSnap.data().count;
+                document.getElementById('contadorTotal').innerText = totalDocsParaPaginacion;
+                actualizarTextoPaginacion();
 
                 let countNoEnc = 0;
                 if (searchTxt.toLowerCase() === 'no encontrado') {
-                    countNoEnc = totalSnap.data().count; 
+                    countNoEnc = totalDocsParaPaginacion; 
                 } else {
                     let restNoEnc = [where("nombre", "==", "No encontrado")];
                     if (respFiltro) restNoEnc.push(where("responsable", "==", respFiltro));
@@ -362,24 +461,21 @@
         }
 
         async function inicializarDashboard() {
-            // Asigna automáticamente la fecha actual al filtro antes de cargar los datos
+            // Asigna automáticamente la fecha actual
             const hoy = new Date();
             const yyyy = hoy.getFullYear();
             const mm = String(hoy.getMonth() + 1).padStart(2, '0');
             const dd = String(hoy.getDate()).padStart(2, '0');
             document.getElementById('dateFilter').value = `${yyyy}-${mm}-${dd}`;
 
-            try {
-                const qResp = query(colHistorial, orderBy("timestamp", "desc"), limit(500));
-                const snapResp = await getDocs(qResp);
-                let responsablesUnicos = new Set();
-                snapResp.docs.forEach(d => {
-                    const val = d.data();
-                    if (val.responsable) responsablesUnicos.add(val.responsable);
-                });
-                actualizarDropdownResponsables(responsablesUnicos);
-            } catch (e) {
-                console.log("Error cargando responsables", e);
+            // Cargar operadores optimizadamente sin iterar 500 registros
+            cargarOperadoresConfig();
+
+            // Renderizar instantáneamente desde Caché Local (IndexedDB) para eliminar parpadeo de carga
+            const cache = await cargarDeCache();
+            if (cache && cache.length > 0) {
+                datosFiltrados = cache;
+                renderizarTabla(); 
             }
 
             cargarPagina(0); 
@@ -389,7 +485,11 @@
             const select = document.getElementById('responsableFilter');
             const valorActual = select.value;
             select.innerHTML = '<option value="">👤 Todos los operadores</option>';
-            setResponsables.forEach(resp => {
+            
+            // Ordenar alfabéticamente para mayor facilidad
+            const operadoresOrdenados = Array.from(setResponsables).sort();
+            
+            operadoresOrdenados.forEach(resp => {
                 const option = document.createElement('option');
                 option.value = resp;
                 option.textContent = resp;
@@ -398,7 +498,15 @@
             select.value = valorActual; 
         }
 
-        // Función para borrar la fecha y recargar los datos de todos los días
+        // --- OPTIMIZACIÓN 2: Debounce de Búsqueda ---
+        let debounceTimer;
+        window.buscarConDebounce = () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                aplicarFiltros();
+            }, 500); // Espera 500ms al dejar de teclear
+        };
+
         window.limpiarFiltroFecha = () => {
             document.getElementById('dateFilter').value = '';
             aplicarFiltros();
@@ -461,7 +569,10 @@
 
             if (unsubscribe) unsubscribe();
 
-            document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center;">Cargando registros...</td></tr>`;
+            // Solo mostrar "Cargando..." si no hay datos de caché previos
+            if (datosFiltrados.length === 0) {
+                document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center;">Cargando registros...</td></tr>`;
+            }
 
             unsubscribe = onSnapshot(q, (snap) => {
                 datosFiltrados = [];
@@ -469,6 +580,9 @@
                     const data = d.data();
                     data.id = d.id; 
                     datosFiltrados.push(data);
+                    
+                    // Asegurarnos de aprender operadores nuevos dinámicamente
+                    if (data.responsable) agregarOperadorGlobal(data.responsable);
                 });
 
                 if (snap.docs.length > 0) {
@@ -479,11 +593,16 @@
                     ultimoDoc = null;
                 }
 
+                // Guardamos la primera página en caché para arranques rápidos futuros
+                if (paginaActual === 1 && !searchTxt && !respFiltro) {
+                    guardarEnCache(datosFiltrados);
+                }
+
                 renderizarTabla();
                 actualizarEstadisticas();
             }, (error) => {
                 console.error("Alerta de índices en Firebase:", error);
-                document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Error: No se pudo filtrar. (Abre la consola para crear el índice compuesto requerido por Firebase si usas múltiples filtros a la vez).</td></tr>`;
+                document.getElementById('tablaDashboard').innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Error: No se pudo filtrar. (Abre la consola para crear el índice compuesto requerido).</td></tr>`;
             });
         };
 
@@ -493,9 +612,7 @@
 
             if (datosFiltrados.length === 0) {
                 tabla.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #666;">No se encontraron registros.</td></tr>`;
-                document.getElementById('pageInfo').innerText = `Página ${paginaActual}`;
-                document.getElementById('btnPrev').disabled = true;
-                document.getElementById('btnNext').disabled = true;
+                actualizarTextoPaginacion();
                 return;
             }
 
@@ -508,8 +625,12 @@
                     fechaHora = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 }
                 
+                // Resaltamos visualmente los No Encontrados
+                const esNoEncontrado = (data.nombre && data.nombre.toLowerCase() === 'no encontrado');
+                const claseFila = esNoEncontrado ? 'class="fila-alerta"' : '';
+                
                 contenidoHTML += `
-                    <tr>
+                    <tr ${claseFila}>
                         <td><span class="responsable-tag">👤 ${data.responsable || 'DESCONOCIDO'}</span></td>
                         <td>${nombreCorto}</td>
                         <td><strong>${data.codigo}</strong></td>
@@ -520,24 +641,16 @@
             });
             
             tabla.innerHTML = contenidoHTML;
-
-            document.getElementById('pageInfo').innerText = `Página ${paginaActual}`;
-            document.getElementById('btnPrev').disabled = (paginaActual === 1);
-            document.getElementById('btnNext').disabled = (datosFiltrados.length < registrosPorPagina);
+            actualizarTextoPaginacion();
         }
 
-        // CORRECCIÓN: Borrado individual con delay mínimo para asegurar exactitud
         window.borrarRegistroIndividual = async (id) => {
             if (confirm("¿Estás seguro de eliminar este registro?")) {
                 await deleteDoc(doc(db, "historial_registros", id));
-                // Damos 500ms al servidor para que procese antes de volver a contar
-                setTimeout(() => {
-                    actualizarEstadisticas();
-                }, 500);
+                setTimeout(() => { actualizarEstadisticas(); }, 500);
             }
         };
 
-        // NUEVA FUNCIÓN: Borrado total únicamente de los "No encontrados"
         window.limpiarNoEncontrados = async () => {
             if (!confirm("⚠️ ADVERTENCIA: ¿Estás seguro de eliminar TODOS los registros 'No encontrados' de la base de datos?")) return;
             
@@ -547,7 +660,6 @@
             btn.disabled = true;
 
             try {
-                // Consultamos únicamente los documentos que tienen nombre "No encontrado"
                 const qNoEnc = query(colHistorial, where("nombre", "==", "No encontrado"));
                 const querySnapshot = await getDocs(qNoEnc);
                 const docsArray = querySnapshot.docs;
@@ -574,14 +686,9 @@
                 }
                 if (contadorBatch > 0) await batch.commit();
                 
-                // Actualizamos las estadísticas para reflejar la eliminación
-                setTimeout(() => {
-                    actualizarEstadisticas();
-                }, 500);
-                
+                setTimeout(() => { actualizarEstadisticas(); }, 500);
                 alert(`Se eliminaron ${docsArray.length} registros 'No encontrados' correctamente.`);
             } catch (error) {
-                console.error("Error al borrar no encontrados:", error);
                 alert("Hubo un error al intentar limpiar los registros.");
             } finally {
                 btn.innerText = textoOriginal;
@@ -589,7 +696,6 @@
             }
         };
 
-        // CORRECCIÓN: Borrado total por lotes (protege la cuota) y fuerza los contadores a 0.
         window.limpiarHistorialCompleto = async () => {
             if (!confirm("⚠️ ADVERTENCIA: ¿Estás seguro de eliminar TODO el historial?")) return;
             
@@ -617,13 +723,10 @@
                 }
                 if (contadorBatch > 0) await batch.commit();
                 
-                // Forzamos la actualización visual inmediata a cero
                 document.getElementById('contadorTotal').innerText = '0';
                 document.getElementById('contadorNoEncontrados').innerText = '0';
-                
                 alert("Historial del dashboard eliminado correctamente.");
             } catch (error) {
-                console.error("Error al borrar:", error);
                 alert("Hubo un error al intentar limpiar el historial.");
             } finally {
                 btn.innerText = textoOriginal;
@@ -634,8 +737,14 @@
         window.exportarExcel = async () => {
             const btn = document.querySelector('.btn-exportar');
             const textoOriginal = btn.innerText;
-            btn.innerText = "⏳ Generando Excel...";
+            
+            // --- OPTIMIZACIÓN 4: Prevención de Colapso Visual UI ---
+            btn.innerText = "⏳ Procesando archivo...";
             btn.disabled = true;
+            document.body.style.cursor = 'wait';
+            
+            // Pausa obligatoria para permitir que el navegador actualice la UI y el texto del botón antes de congelarse
+            await new Promise(resolve => setTimeout(resolve, 150)); 
 
             try {
                 const searchTxt = document.getElementById('searchInput').value.trim();
@@ -666,6 +775,7 @@
                     alert("No hay datos para exportar con los filtros actuales.");
                     btn.innerText = textoOriginal;
                     btn.disabled = false;
+                    document.body.style.cursor = 'default';
                     return;
                 }
                 
@@ -698,6 +808,7 @@
             } finally {
                 btn.innerText = textoOriginal;
                 btn.disabled = false;
+                document.body.style.cursor = 'default';
             }
         };
     </script>
