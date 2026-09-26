@@ -388,25 +388,31 @@
             }
         };
 
-        document.getElementById('responsableInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { 
-                e.preventDefault(); 
-                document.getElementById('pinInput').focus(); 
-            }
-        });
-        
-        document.getElementById('pinInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { 
-                e.preventDefault(); 
-                window.ingresarResponsable(); 
-            }
-        });
-
+        // NUEVO: Lógica actualizada para contar productos sin borrar el span del operador
+        let totalProductos = 0;
         async function cargarBase() {
-            const status = document.getElementById('statusDb');
-            const htmlExtra = document.getElementById('nombreOperador') ? document.getElementById('nombreOperador').outerHTML : '';
-            status.innerHTML = `✅ Escáner listo y conectado. ${htmlExtra}`;
-            status.style.color = "green";
+            const statusDb = document.getElementById('statusDb');
+            const spanOperador = document.getElementById('nombreOperador');
+            
+            // Mensaje temporal mientras cuenta
+            statusDb.innerHTML = `⏳ Contando productos... `;
+            if (spanOperador) statusDb.appendChild(spanOperador);
+            statusDb.style.color = "#666";
+
+            try {
+                const snapshot = await getDocs(colUbicaciones);
+                totalProductos = snapshot.size;
+                
+                statusDb.innerHTML = `✅ Base cargada: ${totalProductos} productos disponibles. `;
+                if (spanOperador) statusDb.appendChild(spanOperador);
+                statusDb.style.color = "green";
+            } catch (error) {
+                console.error("Error obteniendo total:", error);
+                // Si falla, volvemos al estado de escáner listo
+                statusDb.innerHTML = `✅ Escáner listo y conectado. `;
+                if (spanOperador) statusDb.appendChild(spanOperador);
+                statusDb.style.color = "green";
+            }
         }
         cargarBase();
 
