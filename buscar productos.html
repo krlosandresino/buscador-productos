@@ -509,6 +509,14 @@
             if (e.key === 'Enter') { e.preventDefault(); window.guardarDatos(); }
         });
 
+        document.getElementById('responsableInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('pinInput').focus(); }
+        });
+
+        document.getElementById('pinInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); window.ingresarResponsable(); }
+        });
+
         onSnapshot(query(colRegistros, orderBy("timestamp", "desc")), (snap) => {
             const tabla = document.getElementById('tablaCuerpo');
             let contenidoHTML = "";
